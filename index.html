@@ -1,0 +1,1129 @@
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --bg:#FAF6EF;
+    --navy:#1F2D4D;
+    --navy-light:#314368;
+    --gold:#C9971C;
+    --gold-soft:#F3E2B0;
+    --mint:#3F9C7B;
+    --mint-soft:#DCF0E6;
+    --text:#2B2B28;
+    --muted:#7A7363;
+    --card:#FFFFFF;
+    --border:#E6DEC9;
+    --danger:#B5453A;
+    --radius:14px;
+  }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:"Noto Sans JP", sans-serif;
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  #app{ min-height:100vh; }
+  h1,h2,h3{ font-family:"Zen Maru Gothic", sans-serif; margin:0; }
+  button{
+    font-family:"Noto Sans JP", sans-serif;
+    cursor:pointer;
+    border:none;
+    border-radius:10px;
+    font-size:15px;
+  }
+  input, textarea, select{
+    font-family:"Noto Sans JP", sans-serif;
+    font-size:15px;
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:10px 12px;
+    background:#fff;
+    color:var(--text);
+    width:100%;
+  }
+  input:focus, textarea:focus, select:focus, button:focus-visible{
+    outline:2px solid var(--gold);
+    outline-offset:1px;
+  }
+  label{ font-size:13px; color:var(--muted); font-weight:500; display:block; margin:14px 0 6px; }
+  .muted{ color:var(--muted); }
+
+  /* ---------- 接続／ログイン画面 ---------- */
+  .auth-shell{
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:32px 16px;
+  }
+  .auth-card{
+    width:100%;
+    max-width:420px;
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:20px;
+    padding:32px 28px;
+    box-shadow:0 18px 40px -24px rgba(31,45,77,0.35);
+  }
+  .brand{ display:flex; align-items:center; gap:10px; }
+  .brand h1{ font-size:24px; color:var(--navy); letter-spacing:.02em; }
+  .brand h1 span{ color:var(--gold); }
+  .tagline{ color:var(--muted); font-size:13.5px; margin:8px 0 22px; }
+  .primary-btn{
+    width:100%;
+    background:var(--navy);
+    color:#fff;
+    padding:12px 16px;
+    margin-top:16px;
+    font-weight:700;
+    transition:background .15s ease, transform .1s ease;
+  }
+  .primary-btn:hover{ background:var(--navy-light); }
+  .primary-btn:active{ transform:translateY(1px); }
+  .primary-btn:disabled{ background:#C9C2AC; cursor:not-allowed; }
+  .error-box{
+    margin-top:14px;
+    background:#FBEAE7;
+    border:1px solid #E7B6AE;
+    color:var(--danger);
+    padding:10px 12px;
+    border-radius:10px;
+    font-size:13.5px;
+  }
+  .connected-info{
+    margin-bottom:18px;
+    padding-bottom:16px;
+    border-bottom:1px dashed var(--border);
+    font-size:13.5px;
+    color:var(--muted);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+  .connected-info strong{ color:var(--navy); }
+  .link-btn{
+    background:none;
+    color:var(--gold);
+    font-weight:700;
+    font-size:12.5px;
+    padding:4px 0;
+    text-decoration:underline;
+    white-space:nowrap;
+  }
+  .back-link{
+    background:none;
+    color:var(--navy);
+    font-weight:700;
+    padding:6px 0;
+    margin-bottom:10px;
+    font-size:13.5px;
+  }
+  .tab-row{ display:flex; gap:8px; margin:0 0 6px; }
+  .tab-row button{
+    flex:1;
+    padding:10px 8px;
+    background:#F1ECDD;
+    color:var(--muted);
+    font-weight:700;
+    font-size:13.5px;
+  }
+  .tab-row button.active{ background:var(--navy); color:#fff; }
+  .info-note{
+    margin-top:14px;
+    font-size:13px;
+    color:var(--muted);
+    background:#F6F2E6;
+    border-radius:10px;
+    padding:10px 12px;
+  }
+
+  /* ---------- アプリ全体 ---------- */
+  .app-shell{ max-width:760px; margin:0 auto; min-height:100vh; }
+  .topbar{
+    background:var(--navy);
+    color:#fff;
+    padding:16px 20px;
+    display:flex;
+    align-items:center;
+    gap:12px;
+    flex-wrap:wrap;
+  }
+  .topbar-title{ font-family:"Zen Maru Gothic", sans-serif; font-weight:700; font-size:18px; }
+  .role-badge{
+    font-family:"Noto Sans JP", sans-serif;
+    font-size:11px;
+    font-weight:700;
+    background:var(--gold);
+    color:#1F2D4D;
+    padding:3px 9px;
+    border-radius:999px;
+    margin-left:6px;
+    vertical-align:2px;
+  }
+  .topbar-meta{ font-size:13px; color:#CBD3E2; flex:1; }
+  .logout{
+    background:rgba(255,255,255,0.12);
+    color:#fff;
+    padding:8px 14px;
+    font-size:13px;
+    font-weight:500;
+  }
+  .logout:hover{ background:rgba(255,255,255,0.22); }
+  .tabs{
+    display:flex;
+    gap:6px;
+    padding:14px 20px 0;
+    border-bottom:1px solid var(--border);
+  }
+  .tabs button{
+    background:transparent;
+    color:var(--muted);
+    padding:10px 16px;
+    font-weight:700;
+    border-radius:10px 10px 0 0;
+    position:relative;
+    top:1px;
+  }
+  .tabs button.active{
+    color:var(--navy);
+    border-bottom:3px solid var(--gold);
+  }
+  .content{ padding:20px; }
+
+  .card{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:18px;
+    margin-bottom:14px;
+  }
+  .lesson-card-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+  .lesson-date{ font-size:12px; color:var(--muted); font-weight:600; letter-spacing:.03em; }
+  .lesson-title{ font-size:17px; font-weight:700; color:var(--navy); margin-top:2px; }
+  .badge{
+    font-size:11.5px;
+    font-weight:700;
+    padding:4px 10px;
+    border-radius:999px;
+    white-space:nowrap;
+  }
+  .badge.published{ background:var(--mint-soft); color:#1F6B4E; }
+  .badge.unpublished{ background:#F1ECDD; color:var(--muted); }
+  .badge.done{ background:var(--mint-soft); color:#1F6B4E; }
+  .badge.pending{ background:#F1ECDD; color:var(--muted); }
+  .card-actions{ display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
+  .ghost-btn{
+    background:#F1ECDD;
+    color:var(--navy);
+    padding:9px 14px;
+    font-weight:600;
+    font-size:13.5px;
+  }
+  .ghost-btn:hover{ background:#E9E2CC; }
+  .gold-btn{
+    background:var(--gold);
+    color:#1F2D4D;
+    padding:9px 14px;
+    font-weight:700;
+    font-size:13.5px;
+  }
+  .gold-btn:hover{ filter:brightness(0.96); }
+  .empty-state{
+    text-align:center;
+    color:var(--muted);
+    padding:50px 20px;
+    font-size:14px;
+  }
+
+  .question-banner{
+    background:var(--navy);
+    color:#fff;
+    border-radius:var(--radius);
+    padding:16px 18px;
+    margin-bottom:16px;
+  }
+  .question-banner .label{ font-size:11.5px; color:var(--gold-soft); font-weight:700; letter-spacing:.04em; }
+  .question-banner .q{ font-size:16px; margin-top:6px; font-weight:700; line-height:1.5; }
+
+  .response-text-box{
+    background:#FBF9F2;
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:12px 14px;
+    font-size:14.5px;
+    white-space:pre-wrap;
+    margin-top:8px;
+  }
+
+  .eval-controls{
+    display:flex;
+    align-items:center;
+    gap:14px;
+    margin:12px 0 2px;
+    flex-wrap:wrap;
+  }
+  .eval-controls select{ width:auto; padding:7px 10px; }
+  .like-toggle-label{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    font-size:14px;
+    color:var(--text);
+    margin:0;
+  }
+  .like-toggle-label input{ width:18px; height:18px; }
+
+  .eval-row{ display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+  .rating-badge{
+    font-size:12px;
+    font-weight:700;
+    background:var(--navy);
+    color:#fff;
+    padding:5px 11px;
+    border-radius:999px;
+  }
+  .like-badge{
+    font-size:12px;
+    font-weight:700;
+    background:#FDE7EA;
+    color:#B5453A;
+    padding:5px 11px;
+    border-radius:999px;
+  }
+
+  /* 先生のコメント＝ふせん（シグネチャー要素） */
+  .comment-note{
+    position:relative;
+    margin-top:14px;
+    background:var(--gold-soft);
+    border:1px solid #E0BD66;
+    border-radius:4px 12px 12px 12px;
+    padding:14px 16px 14px 18px;
+    transform:rotate(-0.6deg);
+    box-shadow:0 10px 18px -12px rgba(120,90,20,0.45);
+  }
+  .comment-note::before{
+    content:"";
+    position:absolute;
+    top:0; left:0;
+    width:0; height:0;
+    border-style:solid;
+    border-width:0 16px 16px 0;
+    border-color:transparent #FAF6EF transparent transparent;
+  }
+  .comment-note .ctitle{
+    font-size:11.5px;
+    font-weight:700;
+    color:#8A6512;
+    letter-spacing:.03em;
+  }
+  .comment-note .ctext{
+    margin-top:6px;
+    font-size:14.5px;
+    white-space:pre-wrap;
+    color:#3B2E0E;
+  }
+  .comment-note .ctime{ margin-top:8px; font-size:11px; color:#9C8338; }
+  .comment-empty{
+    margin-top:12px;
+    font-size:13px;
+    color:var(--muted);
+    border:1px dashed var(--border);
+    border-radius:10px;
+    padding:10px 12px;
+  }
+
+  textarea{ resize:vertical; min-height:90px; }
+  .field-row{ margin-bottom:4px; }
+  .checkbox-row{ display:flex; align-items:center; gap:8px; margin:16px 0 4px; }
+  .checkbox-row input{ width:18px; height:18px; }
+  .checkbox-row label{ margin:0; color:var(--text); font-size:14px; }
+
+  .roster-row{ border-top:1px solid var(--border); padding-top:14px; margin-top:14px; }
+  .roster-row:first-of-type{ border-top:none; padding-top:0; margin-top:0; }
+  .roster-row-head{ display:flex; align-items:center; justify-content:space-between; }
+  .roster-name{ font-weight:700; color:var(--navy); }
+
+  .toast{
+    position:fixed;
+    bottom:22px;
+    left:50%;
+    transform:translateX(-50%);
+    background:var(--navy);
+    color:#fff;
+    padding:11px 20px;
+    border-radius:999px;
+    font-size:13.5px;
+    font-weight:600;
+    box-shadow:0 12px 24px -10px rgba(0,0,0,0.4);
+    z-index:50;
+  }
+  .loading-line{ color:var(--muted); font-size:13.5px; padding:6px 0; }
+
+  @media (max-width:480px){
+    .auth-card{ padding:24px 20px; }
+    .content{ padding:14px; }
+    .topbar{ padding:14px 16px; }
+  }
+</style>
+
+<div id="app"></div>
+<div id="toast-root"></div>
+
+<script>
+  // =========================================================
+  // 状態（メモリ内のみ。リロードすると消えます＝プロトタイプ用）
+  // =========================================================
+  const state = {
+    apiUrl: '',
+    connected: false,
+    className: '',
+    teacherName: '',
+    roster: [],
+    activeLoginTab: 'teacher',
+
+    // 生徒ログインのステップ： selectName -> setPassword(初回) または enterPassword(以降)
+    studentLoginStep: 'selectName',
+    pendingStudentName: '',
+
+    role: null, // 'teacher' | 'student'
+    teacherPassword: '',
+    studentName: '',
+
+    view: 'connect', // connect | teacher | student
+    teacherSubView: 'create', // create | list | detail
+    studentSubView: 'lessons', // lessons | records
+    selectedLessonId: null,
+    writingLessonId: null,
+
+    lessons: [],
+    lessonResponses: [],
+    records: [],
+    rosterAdmin: [],
+    settingPasswordFor: null,
+
+    busy: false,
+    error: '',
+    toast: '',
+  };
+
+  function escapeHtml(str){
+    return String(str ?? '').replace(/[&<>"']/g, (c) => ({
+      '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+    }[c]));
+  }
+
+  function showToast(msg){
+    state.toast = msg;
+    render();
+    setTimeout(() => { state.toast=''; renderToast(); }, 2200);
+  }
+
+  // =========================================================
+  // API呼び出し
+  // 注：Content-Type を text/plain にすることで、ブラウザの
+  // CORSプリフライト(OPTIONS)を発生させずに Apps Script を呼べます。
+  // =========================================================
+  async function apiCall(action, params){
+    params = params || {};
+    const res = await fetch(state.apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(Object.assign({ action: action }, params)),
+    });
+    let data;
+    try{ data = await res.json(); }
+    catch(e){ throw new Error('サーバーの応答を解析できませんでした。接続先URLを確認してください。'); }
+    if(!data.ok) throw new Error(data.error || '不明なエラーが発生しました');
+    return data;
+  }
+
+  function todayStr(){
+    const d = new Date();
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const day = String(d.getDate()).padStart(2,'0');
+    return `${d.getFullYear()}-${m}-${day}`;
+  }
+
+  // =========================================================
+  // ハンドラ：接続／ログイン
+  // =========================================================
+  async function handleConnect(){
+    const url = document.getElementById('apiUrlInput').value.trim();
+    if(!url){ state.error='接続先URLを入力してください'; render(); return; }
+    state.apiUrl = url;
+    state.busy = true; state.error=''; render();
+    try{
+      const res = await apiCall('ping');
+      state.connected = true;
+      state.className = res.className || '(クラス名未設定)';
+      state.teacherName = res.teacherName || '';
+      const rosterRes = await apiCall('getRoster');
+      state.roster = rosterRes.roster || [];
+      state.activeLoginTab = 'teacher';
+      state.studentLoginStep = 'selectName';
+      state.pendingStudentName = '';
+    }catch(e){
+      state.connected = false;
+      state.error = '接続できませんでした：' + e.message;
+    }finally{
+      state.busy = false; render();
+    }
+  }
+
+  function handleChangeConnection(){
+    state.connected = false;
+    state.apiUrl = '';
+    state.className = '';
+    state.teacherName = '';
+    state.roster = [];
+    state.activeLoginTab = 'teacher';
+    state.studentLoginStep = 'selectName';
+    state.pendingStudentName = '';
+    state.error = '';
+    render();
+  }
+
+  function setLoginTab(tab){
+    state.activeLoginTab = tab;
+    state.error='';
+    state.studentLoginStep = 'selectName';
+    state.pendingStudentName = '';
+    render();
+  }
+
+  async function handleTeacherLogin(){
+    const pw = document.getElementById('teacherPasswordInput').value;
+    state.busy = true; state.error=''; render();
+    try{
+      await apiCall('teacherLogin', { password: pw });
+      state.role = 'teacher';
+      state.teacherPassword = pw;
+      state.view = 'teacher';
+      state.teacherSubView = 'list';
+      await loadTeacherLessons();
+    }catch(e){
+      state.error = e.message;
+    }finally{
+      state.busy = false; render();
+    }
+  }
+
+  // 生徒：名前を選んだあとに、パスワード登録済みかどうかを確認する
+  async function handleStudentSelectName(){
+    const name = document.getElementById('studentNameSelect').value;
+    if(!name){ state.error='名前を選んでください'; render(); return; }
+    state.busy = true; state.error=''; render();
+    try{
+      const res = await apiCall('checkStudentAccount', { name });
+      state.pendingStudentName = name;
+      state.studentLoginStep = res.hasPassword ? 'enterPassword' : 'setPassword';
+    }catch(e){
+      state.error = e.message;
+    }finally{
+      state.busy = false; render();
+    }
+  }
+
+  function handleStudentBackToSelect(){
+    state.studentLoginStep = 'selectName';
+    state.pendingStudentName = '';
+    state.error = '';
+    render();
+  }
+
+  // 生徒：初回パスワード登録
+  async function handleRegisterStudentPassword(){
+    const pw = document.getElementById('studentNewPasswordInput').value;
+    const pw2 = document.getElementById('studentNewPasswordConfirm').value;
+    if(pw.length < 4){ state.error='パスワードは4文字以上で設定してください'; render(); return; }
+    if(pw !== pw2){ state.error='パスワード（確認）が一致しません'; render(); return; }
+    state.busy = true; state.error=''; render();
+    try{
+      const res = await apiCall('registerStudentPassword', { name: state.pendingStudentName, password: pw });
+      await afterStudentLoginSuccess(res.studentName);
+    }catch(e){
+      state.error = e.message;
+    }finally{
+      state.busy = false; render();
+    }
+  }
+
+  // 生徒：2回目以降のログイン
+  async function handleStudentPasswordLogin(){
+    const pw = document.getElementById('studentPasswordInput').value;
+    if(!pw){ state.error='パスワードを入力してください'; render(); return; }
+    state.busy = true; state.error=''; render();
+    try{
+      const res = await apiCall('studentLogin', { name: state.pendingStudentName, password: pw });
+      await afterStudentLoginSuccess(res.studentName);
+    }catch(e){
+      state.error = e.message;
+    }finally{
+      state.busy = false; render();
+    }
+  }
+
+  async function afterStudentLoginSuccess(studentName){
+    state.role = 'student';
+    state.studentName = studentName;
+    state.view = 'student';
+    state.studentSubView = 'lessons';
+    await loadStudentData();
+  }
+
+  function handleLogout(){
+    state.role = null;
+    state.teacherPassword = '';
+    state.studentName = '';
+    state.view = 'connect';
+    state.selectedLessonId = null;
+    state.writingLessonId = null;
+    state.lessons = [];
+    state.lessonResponses = [];
+    state.records = [];
+    state.error = '';
+    state.studentLoginStep = 'selectName';
+    state.pendingStudentName = '';
+    render();
+  }
+
+  // =========================================================
+  // ハンドラ：先生
+  // =========================================================
+  async function loadTeacherLessons(){
+    state.busy = true; render();
+    try{
+      const res = await apiCall('getLessons', { role:'teacher' });
+      state.lessons = res.lessons || [];
+    }catch(e){ state.error = e.message; }
+    finally{ state.busy = false; render(); }
+  }
+
+  function setTeacherSubView(v){
+    state.teacherSubView = v;
+    state.error='';
+    state.settingPasswordFor = null;
+    if(v === 'list') loadTeacherLessons();
+    else if(v === 'students') loadRosterAdmin();
+    else render();
+  }
+
+  async function handleCreateLesson(){
+    const date = document.getElementById('lessonDateInput').value || todayStr();
+    const title = document.getElementById('lessonTitleInput').value.trim();
+    const question = document.getElementById('lessonQuestionInput').value.trim();
+    const published = document.getElementById('lessonPublishCheckbox').checked;
+    if(!title || !question){ state.error='タイトルと発問は必須です'; render(); return; }
+    state.busy = true; state.error=''; render();
+    try{
+      await apiCall('createLesson', { password: state.teacherPassword, date, title, question, published });
+      showToast('授業を作成しました');
+      state.teacherSubView = 'list';
+      await loadTeacherLessons();
+    }catch(e){ state.error = e.message; render(); }
+    finally{ state.busy = false; }
+  }
+
+  async function handleTogglePublish(lessonId, newVal){
+    state.busy = true; render();
+    try{
+      await apiCall('setLessonPublished', { password: state.teacherPassword, lessonId, published: newVal });
+      await loadTeacherLessons();
+      showToast(newVal ? '公開しました' : '非公開にしました');
+    }catch(e){ state.error = e.message; render(); }
+    finally{ state.busy = false; }
+  }
+
+  async function openLessonDetail(lessonId){
+    state.selectedLessonId = lessonId;
+    state.teacherSubView = 'detail';
+    state.busy = true; render();
+    try{
+      const res = await apiCall('getResponsesForLesson', { password: state.teacherPassword, lessonId });
+      state.lessonResponses = res.responses || [];
+    }catch(e){ state.error = e.message; }
+    finally{ state.busy = false; render(); }
+  }
+
+  async function handleSaveComment(idx){
+    const row = state.lessonResponses[idx];
+    const comment = document.getElementById('comment-input-'+idx).value;
+    const rating = document.getElementById('rating-input-'+idx).value;
+    const liked = document.getElementById('liked-input-'+idx).checked;
+    state.busy = true; render();
+    try{
+      await apiCall('saveComment', {
+        password: state.teacherPassword,
+        lessonId: state.selectedLessonId,
+        studentName: row.studentName,
+        comment, rating, liked,
+      });
+      const res = await apiCall('getResponsesForLesson', { password: state.teacherPassword, lessonId: state.selectedLessonId });
+      state.lessonResponses = res.responses || [];
+      showToast(row.studentName + ' さんへの評価・コメントを保存しました');
+    }catch(e){ state.error = e.message; }
+    finally{ state.busy = false; render(); }
+  }
+
+  // =========================================================
+  // ハンドラ：先生による生徒管理
+  // =========================================================
+  async function loadRosterAdmin(){
+    state.busy = true; render();
+    try{
+      const res = await apiCall('getRosterAdmin', { password: state.teacherPassword });
+      state.rosterAdmin = res.roster || [];
+    }catch(e){ state.error = e.message; }
+    finally{ state.busy = false; render(); }
+  }
+
+  async function handleAddStudent(){
+    const number = document.getElementById('newStudentNumber').value.trim();
+    const name = document.getElementById('newStudentName').value.trim();
+    if(!name){ state.error='生徒名を入力してください'; render(); return; }
+    state.busy = true; state.error=''; render();
+    try{
+      await apiCall('addStudent', { password: state.teacherPassword, number, name });
+      showToast(name + ' さんを追加しました');
+      await loadRosterAdmin();
+    }catch(e){ state.error = e.message; render(); }
+    finally{ state.busy = false; }
+  }
+
+  function toggleSetPasswordForm(idx){
+    state.settingPasswordFor = (state.settingPasswordFor === idx) ? null : idx;
+    render();
+  }
+
+  async function handleSetStudentPassword(idx){
+    const student = state.rosterAdmin[idx];
+    const pw = document.getElementById('set-password-input-'+idx).value;
+    if(pw.length < 4){ state.error='パスワードは4文字以上で設定してください'; render(); return; }
+    state.busy = true; state.error=''; render();
+    try{
+      await apiCall('setStudentPassword', { password: state.teacherPassword, name: student.name, newPassword: pw });
+      showToast(student.name + ' さんのパスワードを設定しました');
+      state.settingPasswordFor = null;
+      await loadRosterAdmin();
+    }catch(e){ state.error = e.message; render(); }
+    finally{ state.busy = false; }
+  }
+
+  async function handleResetStudentPassword(idx){
+    const student = state.rosterAdmin[idx];
+    if(!confirm(student.name + ' さんのパスワードをリセットします。次回ログイン時に新しいパスワードの登録が必要になります。よろしいですか？')) return;
+    state.busy = true; state.error=''; render();
+    try{
+      await apiCall('resetStudentPassword', { password: state.teacherPassword, name: student.name });
+      showToast(student.name + ' さんのパスワードをリセットしました');
+      await loadRosterAdmin();
+    }catch(e){ state.error = e.message; render(); }
+    finally{ state.busy = false; }
+  }
+
+  async function handleRemoveStudent(idx){
+    const student = state.rosterAdmin[idx];
+    if(!confirm(student.name + ' さんを名簿から削除します。よろしいですか？（過去の回答データは残ります）')) return;
+    state.busy = true; state.error=''; render();
+    try{
+      await apiCall('removeStudent', { password: state.teacherPassword, name: student.name });
+      showToast(student.name + ' さんを削除しました');
+      await loadRosterAdmin();
+    }catch(e){ state.error = e.message; render(); }
+    finally{ state.busy = false; }
+  }
+
+  // =========================================================
+  // ハンドラ：生徒
+  // =========================================================
+  async function loadStudentData(){
+    const [lessonsRes, recordsRes] = await Promise.all([
+      apiCall('getLessons', { role:'student' }),
+      apiCall('getMyRecords', { studentName: state.studentName }),
+    ]);
+    state.lessons = lessonsRes.lessons || [];
+    state.records = recordsRes.records || [];
+  }
+
+  function setStudentSubView(v){
+    state.studentSubView = v;
+    state.writingLessonId = null;
+    state.error = '';
+    if(v === 'records') refreshStudentRecords();
+    else render();
+  }
+
+  async function refreshStudentRecords(){
+    state.busy = true; render();
+    try{
+      const res = await apiCall('getMyRecords', { studentName: state.studentName });
+      state.records = res.records || [];
+    }catch(e){ state.error = e.message; }
+    finally{ state.busy = false; render(); }
+  }
+
+  function toggleWriteForm(lessonId){
+    state.writingLessonId = (state.writingLessonId === lessonId) ? null : lessonId;
+    render();
+  }
+
+  async function handleSubmitReflection(lessonId){
+    const text = document.getElementById('reflection-input-'+lessonId).value.trim();
+    if(!text){ state.error='ひとことでも、自分の考えを書いてみよう'; render(); return; }
+    state.busy = true; state.error=''; render();
+    try{
+      await apiCall('submitReflection', { studentName: state.studentName, lessonId, text });
+      const res = await apiCall('getMyRecords', { studentName: state.studentName });
+      state.records = res.records || [];
+      state.writingLessonId = null;
+      showToast('送信しました');
+    }catch(e){ state.error = e.message; }
+    finally{ state.busy = false; render(); }
+  }
+
+  // =========================================================
+  // 画面描画
+  // =========================================================
+  function render(){
+    const app = document.getElementById('app');
+    if(state.view === 'connect') app.innerHTML = renderConnectScreen();
+    else if(state.view === 'teacher') app.innerHTML = renderTeacherScreen();
+    else if(state.view === 'student') app.innerHTML = renderStudentScreen();
+    renderToast();
+  }
+
+  function renderToast(){
+    document.getElementById('toast-root').innerHTML = state.toast
+      ? `<div class="toast">${escapeHtml(state.toast)}</div>` : '';
+  }
+
+  function renderConnectScreen(){
+    if(!state.connected){
+      return `
+        <div class="auth-shell">
+          <div class="auth-card">
+            <div class="brand">
+              <h1>学習交流<span>シート</span></h1>
+            </div>
+            <p class="tagline">ふりかえりを記録し、積み重ねていくための学習ノート（試作版）</p>
+
+            <label for="apiUrlInput">接続先URL（Webアプリ URL）</label>
+            <input id="apiUrlInput" type="text" placeholder="https://script.google.com/macros/s/.../exec" value="${escapeHtml(state.apiUrl)}">
+            <button class="primary-btn" onclick="handleConnect()" ${state.busy ? 'disabled' : ''}>
+              ${state.busy ? '接続中…' : '接続する'}
+            </button>
+
+            ${state.error ? `<div class="error-box">${escapeHtml(state.error)}</div>` : ''}
+          </div>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="auth-shell">
+        <div class="auth-card">
+          <div class="brand">
+            <h1>学習交流<span>シート</span></h1>
+          </div>
+          <div class="connected-info">
+            <span>接続先：<strong>${escapeHtml(state.className)}</strong>${state.teacherName ? '（担任：' + escapeHtml(state.teacherName) + '）' : ''}</span>
+            <button class="link-btn" onclick="handleChangeConnection()">接続先を選び直す</button>
+          </div>
+
+          <div class="tab-row">
+            <button class="${state.activeLoginTab==='teacher'?'active':''}" onclick="setLoginTab('teacher')">先生としてログイン</button>
+            <button class="${state.activeLoginTab==='student'?'active':''}" onclick="setLoginTab('student')">生徒としてログイン</button>
+          </div>
+
+          ${state.activeLoginTab === 'teacher' ? renderTeacherLoginForm() : renderStudentLoginForm()}
+
+          ${state.error ? `<div class="error-box">${escapeHtml(state.error)}</div>` : ''}
+        </div>
+      </div>
+    `;
+  }
+
+  function renderTeacherLoginForm(){
+    return `
+      <label for="teacherPasswordInput">教師パスワード</label>
+      <input id="teacherPasswordInput" type="password" placeholder="パスワードを入力">
+      <button class="primary-btn" onclick="handleTeacherLogin()" ${state.busy?'disabled':''}>ログイン</button>
+    `;
+  }
+
+  function renderStudentLoginForm(){
+    if(state.studentLoginStep === 'setPassword'){
+      return `
+        <button class="back-link" onclick="handleStudentBackToSelect()">← 名前の選択にもどる</button>
+        <p class="muted" style="font-size:13.5px;">${escapeHtml(state.pendingStudentName)} さん、はじめてのログインですね。今後使うパスワードを決めてください。</p>
+        <label for="studentNewPasswordInput">あたらしいパスワード（4文字以上）</label>
+        <input id="studentNewPasswordInput" type="password" placeholder="4文字以上で入力">
+        <label for="studentNewPasswordConfirm">もう一度入力（確認）</label>
+        <input id="studentNewPasswordConfirm" type="password" placeholder="もう一度同じパスワードを入力">
+        <button class="primary-btn" onclick="handleRegisterStudentPassword()" ${state.busy?'disabled':''}>登録してはじめる</button>
+        <p class="info-note">次回からは、同じ名前を選んでこのパスワードでログインします。忘れないようにしましょう。</p>
+      `;
+    }
+    if(state.studentLoginStep === 'enterPassword'){
+      return `
+        <button class="back-link" onclick="handleStudentBackToSelect()">← 名前の選択にもどる</button>
+        <p class="muted" style="font-size:13.5px;">${escapeHtml(state.pendingStudentName)} さん、パスワードを入力してください。</p>
+        <label for="studentPasswordInput">パスワード</label>
+        <input id="studentPasswordInput" type="password" placeholder="パスワードを入力">
+        <button class="primary-btn" onclick="handleStudentPasswordLogin()" ${state.busy?'disabled':''}>ログイン</button>
+      `;
+    }
+    // selectName
+    return `
+      <label for="studentNameSelect">名前をえらぶ</label>
+      <select id="studentNameSelect">
+        <option value="">えらんでください</option>
+        ${state.roster.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('')}
+      </select>
+      <button class="primary-btn" onclick="handleStudentSelectName()" ${state.busy?'disabled':''}>次へ</button>
+      ${state.roster.length===0 ? '<p class="muted" style="font-size:12.5px;margin-top:8px;">※ 名簿が空です。「名簿」シートに生徒名を入力してください。</p>' : ''}
+    `;
+  }
+
+  // ---------------- 先生用 ----------------
+  function renderTeacherScreen(){
+    return `
+      <div class="app-shell">
+        <header class="topbar">
+          <div class="topbar-title">学習交流シート<span class="role-badge">先生</span></div>
+          <div class="topbar-meta">${escapeHtml(state.className)}${state.teacherName ? ' ・ ' + escapeHtml(state.teacherName) : ''}</div>
+          <button class="logout" onclick="handleLogout()">ログアウト</button>
+        </header>
+        <nav class="tabs">
+          <button class="${state.teacherSubView==='create'?'active':''}" onclick="setTeacherSubView('create')">授業を作成</button>
+          <button class="${(state.teacherSubView==='list'||state.teacherSubView==='detail')?'active':''}" onclick="setTeacherSubView('list')">授業一覧</button>
+          <button class="${state.teacherSubView==='students'?'active':''}" onclick="setTeacherSubView('students')">生徒管理</button>
+        </nav>
+        <main class="content">
+          ${state.error ? `<div class="error-box">${escapeHtml(state.error)}</div>` : ''}
+          ${state.busy ? '<p class="loading-line">読み込み中…</p>' : ''}
+          ${state.teacherSubView === 'create' ? renderCreateLessonForm()
+            : state.teacherSubView === 'detail' ? renderLessonDetail()
+            : state.teacherSubView === 'students' ? renderStudentAdmin()
+            : renderLessonListForTeacher()}
+        </main>
+      </div>
+    `;
+  }
+
+  function renderCreateLessonForm(){
+    return `
+      <div class="card">
+        <h2 style="font-size:16px;color:var(--navy);">新しい授業をつくる</h2>
+        <div class="field-row">
+          <label for="lessonDateInput">日付</label>
+          <input id="lessonDateInput" type="date" value="${todayStr()}">
+        </div>
+        <div class="field-row">
+          <label for="lessonTitleInput">タイトル（例：友情と信頼）</label>
+          <input id="lessonTitleInput" type="text" placeholder="授業のタイトル">
+        </div>
+        <div class="field-row">
+          <label for="lessonQuestionInput">発問（ふりかえりで生徒に問いたいこと）</label>
+          <textarea id="lessonQuestionInput" placeholder="例：今日の話し合いを通して、自分の考えはどう深まりましたか？"></textarea>
+        </div>
+        <div class="checkbox-row">
+          <input id="lessonPublishCheckbox" type="checkbox" checked>
+          <label for="lessonPublishCheckbox">今すぐ生徒に公開する</label>
+        </div>
+        <button class="primary-btn" onclick="handleCreateLesson()" ${state.busy?'disabled':''}>この授業を保存</button>
+      </div>
+    `;
+  }
+
+  function renderLessonListForTeacher(){
+    if(state.lessons.length === 0){
+      return `<div class="empty-state">まだ授業がありません。「授業を作成」から最初の授業をつくってみましょう。</div>`;
+    }
+    return state.lessons.map(l => `
+      <div class="card">
+        <div class="lesson-card-head">
+          <div>
+            <div class="lesson-date">${escapeHtml(l.date)}</div>
+            <div class="lesson-title">${escapeHtml(l.title)}</div>
+          </div>
+          <span class="badge ${l.published?'published':'unpublished'}">${l.published?'公開中':'非公開'}</span>
+        </div>
+        <div class="card-actions">
+          <button class="gold-btn" onclick="openLessonDetail('${l.lessonId}')">回答を見る・評価する</button>
+          <button class="ghost-btn" onclick="handleTogglePublish('${l.lessonId}', ${!l.published})">${l.published?'非公開にする':'公開する'}</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  function renderLessonDetail(){
+    const lesson = state.lessons.find(l => l.lessonId === state.selectedLessonId);
+    const submittedCount = state.lessonResponses.filter(r => r.submitted).length;
+    return `
+      <button class="back-link" onclick="setTeacherSubView('list')">← 授業一覧にもどる</button>
+      ${lesson ? `
+        <div class="question-banner">
+          <div class="label">${escapeHtml(lesson.date)} ・ ${escapeHtml(lesson.title)}</div>
+          <div class="q">${escapeHtml(lesson.question)}</div>
+        </div>
+        <p class="muted" style="font-size:13px;margin:-4px 0 14px;">提出状況：${submittedCount} / ${state.lessonResponses.length} 人</p>
+      ` : ''}
+      ${state.lessonResponses.map((r, idx) => `
+        <div class="card roster-row">
+          <div class="roster-row-head">
+            <span class="roster-name">${escapeHtml(r.studentName)}</span>
+            <span class="badge ${r.submitted?'done':'pending'}">${r.submitted?'提出済み':'未提出'}</span>
+          </div>
+          ${r.submitted ? `
+            <div class="response-text-box">${escapeHtml(r.text)}</div>
+            <p class="muted" style="font-size:11.5px;margin:6px 0 0;">提出：${escapeHtml(r.submittedAt)}</p>
+
+            <div class="eval-controls">
+              <label style="margin:0;" for="rating-input-${idx}">評価</label>
+              <select id="rating-input-${idx}">
+                <option value="">未評価</option>
+                ${[1,2,3,4,5,6,7,8,9,10].map(n => `<option value="${n}" ${r.rating===n?'selected':''}>${n}</option>`).join('')}
+              </select>
+              <label class="like-toggle-label" for="liked-input-${idx}">
+                <input type="checkbox" id="liked-input-${idx}" ${r.liked?'checked':''}> いいね
+              </label>
+            </div>
+
+            <label for="comment-input-${idx}">先生からのコメント</label>
+            <textarea id="comment-input-${idx}" placeholder="よいところを認めて、次への一歩を添えましょう">${escapeHtml(r.comment)}</textarea>
+            <button class="gold-btn" style="margin-top:8px;" onclick="handleSaveComment(${idx})" ${state.busy?'disabled':''}>評価・コメントを保存</button>
+          ` : `<p class="muted" style="font-size:13px;margin-top:8px;">まだ提出していません。</p>`}
+        </div>
+      `).join('')}
+    `;
+  }
+
+  function renderStudentAdmin(){
+    return `
+      <div class="card">
+        <h2 style="font-size:16px;color:var(--navy);">生徒を追加</h2>
+        <div class="field-row">
+          <label for="newStudentNumber">出席番号（任意）</label>
+          <input id="newStudentNumber" type="text" placeholder="例：5">
+        </div>
+        <div class="field-row">
+          <label for="newStudentName">生徒名</label>
+          <input id="newStudentName" type="text" placeholder="例：山田 太郎">
+        </div>
+        <button class="primary-btn" onclick="handleAddStudent()" ${state.busy?'disabled':''}>追加する</button>
+      </div>
+      ${state.rosterAdmin.length === 0 ? '<div class="empty-state">名簿に生徒が登録されていません。</div>' : state.rosterAdmin.map((s, idx) => `
+        <div class="card roster-row">
+          <div class="roster-row-head">
+            <span class="roster-name">${escapeHtml(s.name)}${s.number ? '（' + escapeHtml(s.number) + '番）' : ''}</span>
+            <span class="badge ${s.hasPassword?'done':'pending'}">${s.hasPassword?'パスワード設定済み':'未設定'}</span>
+          </div>
+          <div class="card-actions">
+            <button class="ghost-btn" onclick="handleResetStudentPassword(${idx})" ${state.busy?'disabled':''}>パスワードをリセット</button>
+            <button class="ghost-btn" onclick="toggleSetPasswordForm(${idx})">パスワードを指定する</button>
+            <button class="ghost-btn" style="color:var(--danger);" onclick="handleRemoveStudent(${idx})" ${state.busy?'disabled':''}>名簿から削除</button>
+          </div>
+          ${state.settingPasswordFor === idx ? `
+            <div class="field-row" style="margin-top:12px;">
+              <label for="set-password-input-${idx}">新しいパスワード（4文字以上・生徒に伝えてください）</label>
+              <input id="set-password-input-${idx}" type="text" placeholder="例：abcd1234">
+              <button class="gold-btn" style="margin-top:8px;" onclick="handleSetStudentPassword(${idx})" ${state.busy?'disabled':''}>このパスワードを設定する</button>
+            </div>
+          ` : ''}
+        </div>
+      `).join('')}
+    `;
+  }
+
+  // ---------------- 生徒用 ----------------
+  function renderStudentScreen(){
+    return `
+      <div class="app-shell">
+        <header class="topbar">
+          <div class="topbar-title">学習交流シート<span class="role-badge">生徒</span></div>
+          <div class="topbar-meta">${escapeHtml(state.studentName)} さん ・ ${escapeHtml(state.className)}</div>
+          <button class="logout" onclick="handleLogout()">ログアウト</button>
+        </header>
+        <nav class="tabs">
+          <button class="${state.studentSubView==='lessons'?'active':''}" onclick="setStudentSubView('lessons')">授業</button>
+          <button class="${state.studentSubView==='records'?'active':''}" onclick="setStudentSubView('records')">きろくを見る</button>
+        </nav>
+        <main class="content">
+          ${state.error ? `<div class="error-box">${escapeHtml(state.error)}</div>` : ''}
+          ${state.busy ? '<p class="loading-line">読み込み中…</p>' : ''}
+          ${state.studentSubView === 'lessons' ? renderStudentLessons() : renderStudentRecords()}
+        </main>
+      </div>
+    `;
+  }
+
+  function renderStudentLessons(){
+    if(state.lessons.length === 0){
+      return `<div class="empty-state">まだ公開されている授業がありません。</div>`;
+    }
+    return state.lessons.map(l => {
+      const record = state.records.find(r => r.lessonId === l.lessonId);
+      const isWriting = state.writingLessonId === l.lessonId;
+      return `
+        <div class="card">
+          <div class="lesson-card-head">
+            <div>
+              <div class="lesson-date">${escapeHtml(l.date)}</div>
+              <div class="lesson-title">${escapeHtml(l.title)}</div>
+            </div>
+            ${record ? '<span class="badge done">回答済み</span>' : ''}
+          </div>
+          <div class="card-actions">
+            <button class="gold-btn" onclick="toggleWriteForm('${l.lessonId}')">${record ? '回答を見る・直す' : '回答する'}</button>
+          </div>
+          ${isWriting ? `
+            <div class="question-banner" style="margin-top:14px;">
+              <div class="label">発問</div>
+              <div class="q">${escapeHtml(l.question)}</div>
+            </div>
+            <textarea id="reflection-input-${l.lessonId}" placeholder="自分の考えを書いてみよう">${escapeHtml(record ? record.text : '')}</textarea>
+            <button class="primary-btn" onclick="handleSubmitReflection('${l.lessonId}')" ${state.busy?'disabled':''}>送信する</button>
+          ` : ''}
+        </div>
+      `;
+    }).join('');
+  }
+
+  function renderStudentRecords(){
+    if(state.records.length === 0){
+      return `<div class="empty-state">まだ記録がありません。授業に回答すると、ここに残ります。</div>`;
+    }
+    return state.records.map(r => `
+      <div class="card">
+        <div class="lesson-date">${escapeHtml(r.date)}</div>
+        <div class="lesson-title">${escapeHtml(r.title)}</div>
+        <p class="muted" style="font-size:13px;margin:6px 0 0;">${escapeHtml(r.question)}</p>
+        <div class="response-text-box">${escapeHtml(r.text)}</div>
+        ${(r.rating || r.liked) ? `
+          <div class="eval-row">
+            ${r.rating ? `<span class="rating-badge">評価 ${r.rating} / 10</span>` : ''}
+            ${r.liked ? `<span class="like-badge">♥ いいね</span>` : ''}
+          </div>
+        ` : ''}
+        ${r.comment ? `
+          <div class="comment-note">
+            <div class="ctitle">先生からのコメント</div>
+            <div class="ctext">${escapeHtml(r.comment)}</div>
+            <div class="ctime">${escapeHtml(r.commentedAt)}</div>
+          </div>
+        ` : `<div class="comment-empty">まだ先生からのコメントはありません。</div>`}
+      </div>
+    `).join('');
+  }
+
+  render();
+</script>
