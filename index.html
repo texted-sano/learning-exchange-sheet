@@ -363,9 +363,35 @@
     font-size:13.5px;
     font-weight:600;
     box-shadow:0 12px 24px -10px rgba(0,0,0,0.4);
-    z-index:50;
+    z-index:100;
   }
   .loading-line{ color:var(--muted); font-size:13.5px; padding:6px 0; }
+
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .loading-overlay{
+    position:fixed;
+    inset:0;
+    background:rgba(250,246,239,0.6);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:12px;
+    z-index:80;
+  }
+  .spinner{
+    width:40px;
+    height:40px;
+    border:4px solid var(--border);
+    border-top-color:var(--gold);
+    border-radius:50%;
+    animation:spin .8s linear infinite;
+  }
+  .loading-overlay .loading-text{
+    font-size:13.5px;
+    font-weight:700;
+    color:var(--navy);
+  }
 
   @media (max-width:480px){
     .auth-card{ padding:24px 20px; }
@@ -376,6 +402,7 @@
 
 <div id="app"></div>
 <div id="toast-root"></div>
+<div id="loading-root"></div>
 
 <script>
   // =========================================================
@@ -412,6 +439,7 @@
     busy: false,
     error: '',
     toast: '',
+    toastTimerStarted: false,
   };
 
   function escapeHtml(str){
@@ -422,8 +450,8 @@
 
   function showToast(msg){
     state.toast = msg;
+    state.toastTimerStarted = false;
     render();
-    setTimeout(() => { state.toast=''; renderToast(); }, 2200);
   }
 
   // =========================================================
@@ -798,11 +826,30 @@
     else if(state.view === 'teacher') app.innerHTML = renderTeacherScreen();
     else if(state.view === 'student') app.innerHTML = renderStudentScreen();
     renderToast();
+    renderLoadingOverlay();
+  }
+
+  function renderLoadingOverlay(){
+    document.getElementById('loading-root').innerHTML = state.busy
+      ? `<div class="loading-overlay"><div class="spinner"></div><div class="loading-text">読み込み中…</div></div>`
+      : '';
   }
 
   function renderToast(){
-    document.getElementById('toast-root').innerHTML = state.toast
-      ? `<div class="toast">${escapeHtml(state.toast)}</div>` : '';
+    const root = document.getElementById('toast-root');
+    if(!state.toast || state.busy){
+      root.innerHTML = '';
+      return;
+    }
+    root.innerHTML = `<div class="toast">${escapeHtml(state.toast)}</div>`;
+    if(!state.toastTimerStarted){
+      state.toastTimerStarted = true;
+      setTimeout(() => {
+        state.toast = '';
+        state.toastTimerStarted = false;
+        renderToast();
+      }, 2200);
+    }
   }
 
   function renderConnectScreen(){
@@ -909,7 +956,6 @@
         </nav>
         <main class="content">
           ${state.error ? `<div class="error-box">${escapeHtml(state.error)}</div>` : ''}
-          ${state.busy ? '<p class="loading-line">読み込み中…</p>' : ''}
           ${state.teacherSubView === 'create' ? renderCreateLessonForm()
             : state.teacherSubView === 'detail' ? renderLessonDetail()
             : state.teacherSubView === 'students' ? renderStudentAdmin()
@@ -1059,7 +1105,6 @@
         </nav>
         <main class="content">
           ${state.error ? `<div class="error-box">${escapeHtml(state.error)}</div>` : ''}
-          ${state.busy ? '<p class="loading-line">読み込み中…</p>' : ''}
           ${state.studentSubView === 'lessons' ? renderStudentLessons() : renderStudentRecords()}
         </main>
       </div>
