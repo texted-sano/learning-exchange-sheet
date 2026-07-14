@@ -40,6 +40,9 @@ const SHEET_SETTINGS = '設定';
 const SHEET_ROSTER = '名簿';
 const SHEET_LESSONS = '授業';
 const SHEET_RESPONSES = '回答';
+const SHEET_THEMES = 'テーマ';
+const SETTING_STUDENT_TOKEN = '生徒用トークン';
+const DEFAULT_THEMES = ['平和', '命', '多様性', '災害', '家族'];
 
 // ============================================================
 // 初期化（スプレッドシートのメニューから実行する）
@@ -58,12 +61,13 @@ function initializeSheets() {
   let settings = ss.getSheetByName(SHEET_SETTINGS);
   if (!settings) {
     settings = ss.insertSheet(SHEET_SETTINGS);
-    settings.getRange('A1:B5').setValues([
+    settings.getRange('A1:B6').setValues([
       ['設定項目', '値'],
       ['クラス名', '6年1組'],
       ['担任名', ''],
-      ['教師パスワード', 'sensei123'],
+      ['教師パスワード', ''],
       ['表示方法(本名/番号/匿名)', '本名'],
+      [SETTING_STUDENT_TOKEN, ''],
     ]);
     settings.getRange('A1:B1').setFontWeight('bold');
     settings.setColumnWidth(1, 220);
@@ -83,9 +87,18 @@ function initializeSheets() {
   let lessons = ss.getSheetByName(SHEET_LESSONS);
   if (!lessons) {
     lessons = ss.insertSheet(SHEET_LESSONS);
-    lessons.getRange('A1:E1').setValues([['授業ID', '日付', 'タイトル', '発問', '公開']]);
-    lessons.getRange('A1:E1').setFontWeight('bold');
-    lessons.setColumnWidths(1, 5, 160);
+    lessons.getRange('A1:F1').setValues([['授業ID', '日付', 'タイトル', '発問', '公開', 'テーマ']]);
+    lessons.getRange('A1:F1').setFontWeight('bold');
+    lessons.setColumnWidths(1, 6, 160);
+  }
+
+  let themes = ss.getSheetByName(SHEET_THEMES);
+  if (!themes) {
+    themes = ss.insertSheet(SHEET_THEMES);
+    themes.getRange('A1').setValue('テーマ');
+    themes.getRange('A1').setFontWeight('bold');
+    themes.getRange(2, 1, DEFAULT_THEMES.length, 1).setValues(DEFAULT_THEMES.map((t) => [t]));
+    themes.setColumnWidth(1, 160);
   }
 
   let responses = ss.getSheetByName(SHEET_RESPONSES);
@@ -135,7 +148,7 @@ function handleRequest(e) {
         result = actionPing();
         break;
       case 'getRoster':
-        result = actionGetRoster();
+        result = actionGetRoster(params);
         break;
       case 'checkStudentAccount':
         result = actionCheckStudentAccount(params);
@@ -149,6 +162,18 @@ function handleRequest(e) {
       case 'teacherLogin':
         result = actionTeacherLogin(params);
         break;
+      case 'registerTeacherPassword':
+        result = actionRegisterTeacherPassword(params);
+        break;
+      case 'updateTeacherSettings':
+        result = actionUpdateTeacherSettings(params);
+        break;
+      case 'getStudentToken':
+        result = actionGetStudentToken(params);
+        break;
+      case 'getStudentTokenStatus':
+        result = actionGetStudentTokenStatus(params);
+        break;
       case 'getLessons':
         result = actionGetLessons(params);
         break;
@@ -157,6 +182,21 @@ function handleRequest(e) {
         break;
       case 'setLessonPublished':
         result = actionSetLessonPublished(params);
+        break;
+      case 'getThemes':
+        result = actionGetThemes(params);
+        break;
+      case 'addTheme':
+        result = actionAddTheme(params);
+        break;
+      case 'removeTheme':
+        result = actionRemoveTheme(params);
+        break;
+      case 'getAllResponsesForStudent':
+        result = actionGetAllResponsesForStudent(params);
+        break;
+      case 'getThemeEvaluationSummary':
+        result = actionGetThemeEvaluationSummary(params);
         break;
       case 'submitReflection':
         result = actionSubmitReflection(params);
@@ -291,6 +331,74 @@ function checkTeacherPassword(params) {
     throw new Error('教師パスワードが正しくありません');
   }
   clearRateLimit(BUCKET);
+  return settings;
+}
+
+// 生徒用トークンの照合（生徒系アクション共通）
+function checkStudentToken(params) {
+  const settings = getSettingsMap();
+  const token = String(settings[SETTING_STUDENT_TOKEN] || '');
+  if (!token || String(params.token || '') !== token) {
+    throw new Error('生徒用URLが無効です。教師に確認してください。');
+  }
+}
+
+function setSettingValue(key, value) {
+  const sheet = getSheet(SHEET_SETTINGS);
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === key) {
+      sheet.getRange(i + 1, 2).setValue(value);
+      return;
+    }
+  }
+  sheet.appendRow([key, value]);
+}
+
+// 複数の設定項目をまとめて書き込む（シートの読み込みを1回にまとめて高速化する）
+function setSettingValues(updates) {
+  const sheet = getSheet(SHEET_SETTINGS);
+  const data = sheet.getDataRange().getValues();
+  Object.keys(updates).forEach((key) => {
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === key) {
+        sheet.getRange(i + 1, 2).setValue(updates[key]);
+        return;
+      }
+    }
+    sheet.appendRow([key, updates[key]]);
+  });
+}
+
+// テーマシートが無い（旧スプレッドシート）場合は既定のテーマで自動作成する
+function ensureThemeSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(SHEET_THEMES);
+  if (!sheet) {
+    sheet = ss.insertSheet(SHEET_THEMES);
+    sheet.getRange('A1').setValue('テーマ');
+    sheet.getRange(2, 1, DEFAULT_THEMES.length, 1).setValues(DEFAULT_THEMES.map((t) => [t]));
+  }
+  return sheet;
+}
+
+function getThemeList() {
+  const sheet = ensureThemeSheet();
+  const data = sheet.getDataRange().getValues();
+  return data
+    .slice(1)
+    .map((row) => String(row[0]).trim())
+    .filter((t) => !!t);
+}
+
+// 授業シートに「テーマ」列が無い（旧スプレッドシート）場合は自動で追加する
+function ensureLessonThemeColumn() {
+  const sheet = getSheet(SHEET_LESSONS);
+  const lastCol = Math.max(sheet.getLastColumn(), 1);
+  const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  if (header.indexOf('テーマ') === -1) {
+    sheet.getRange(1, lastCol + 1).setValue('テーマ');
+  }
 }
 
 function formatDate(d) {
@@ -311,10 +419,20 @@ function isTrue(v) {
   return v === true || v === 'true' || v === 'TRUE' || v === '公開';
 }
 
-function findRosterRowIndex(data, headers, name) {
+// 生徒の識別子（生徒名があれば生徒名、無ければ「出席番号＋番」）
+function getStudentIdentifier(row) {
+  const name = row['生徒名'] && String(row['生徒名']).trim();
+  if (name) return name;
+  const number = row['出席番号'] && String(row['出席番号']).trim();
+  return number ? number + '番' : '';
+}
+
+function findRosterRowIndex(data, headers, identifier) {
   const nameCol = headers.indexOf('生徒名');
+  const numberCol = headers.indexOf('出席番号');
   for (let i = 1; i < data.length; i++) {
-    if (String(data[i][nameCol]).trim() === name) return i;
+    const row = { '生徒名': data[i][nameCol], '出席番号': data[i][numberCol] };
+    if (getStudentIdentifier(row) === identifier) return i;
   }
   return -1;
 }
@@ -329,23 +447,26 @@ function actionPing() {
   return {
     className: settings['クラス名'] || '',
     teacherName: settings['担任名'] || '',
+    hasTeacherPassword: !!(settings['教師パスワード'] && String(settings['教師パスワード']).trim()),
   };
 }
 
 // 生徒ログイン画面の名前選択肢
-function actionGetRoster() {
+function actionGetRoster(params) {
+  checkStudentToken(params);
   const objs = sheetToObjects(getSheet(SHEET_ROSTER));
-  const roster = objs.map((o) => o['生徒名']).filter((n) => !!n);
+  const roster = objs.map((o) => getStudentIdentifier(o)).filter((n) => !!n);
   return { roster: roster };
 }
 
 // 選んだ生徒がパスワード登録済みかどうかを確認する
 function actionCheckStudentAccount(params) {
+  checkStudentToken(params);
   const name = params.name && String(params.name).trim();
   if (!name) throw new Error('名前を選んでください');
 
   const objs = sheetToObjects(getSheet(SHEET_ROSTER));
-  const match = objs.find((o) => String(o['生徒名']).trim() === name);
+  const match = objs.find((o) => getStudentIdentifier(o) === name);
   if (!match) throw new Error('名簿に見つかりません');
 
   const pw = match['パスワード'];
@@ -354,6 +475,7 @@ function actionCheckStudentAccount(params) {
 
 // 初回パスワード登録（パスワード列が空のときだけ成功する）
 function actionRegisterStudentPassword(params) {
+  checkStudentToken(params);
   const name = params.name && String(params.name).trim();
   if (!name) throw new Error('名前を選んでください');
   const password = params.password;
@@ -383,11 +505,20 @@ function actionRegisterStudentPassword(params) {
 
   sheet.getRange(rowIndex + 1, pwCol + 1).setValue(String(password));
   clearRateLimit(bucket);
-  return { studentName: data[rowIndex][headers.indexOf('生徒名')] };
+  const identifier = getStudentIdentifier({
+    '生徒名': data[rowIndex][headers.indexOf('生徒名')],
+    '出席番号': data[rowIndex][headers.indexOf('出席番号')],
+  });
+  return {
+    studentName: identifier,
+    lessons: getLessonsList('student'),
+    records: getMyRecordsList(identifier),
+  };
 }
 
 // 生徒ログイン（名前＋パスワード）
 function actionStudentLogin(params) {
+  checkStudentToken(params);
   const name = params.name && String(params.name).trim();
   if (!name) throw new Error('名前を選んでください');
   if (!params.password) throw new Error('パスワードを入力してください');
@@ -399,7 +530,7 @@ function actionStudentLogin(params) {
   checkRateLimit(bucket);
 
   const objs = sheetToObjects(getSheet(SHEET_ROSTER));
-  const match = objs.find((o) => String(o['生徒名']).trim() === name);
+  const match = objs.find((o) => getStudentIdentifier(o) === name);
   if (!match) throw new Error('名簿に見つかりません');
 
   const storedPw = match['パスワード'];
@@ -412,18 +543,64 @@ function actionStudentLogin(params) {
   }
 
   clearRateLimit(bucket);
-  return { studentName: match['生徒名'] };
+  const identifier = getStudentIdentifier(match);
+  return {
+    studentName: identifier,
+    lessons: getLessonsList('student'),
+    records: getMyRecordsList(identifier),
+  };
 }
 
 // 教師ログイン（パスワード確認のみ。セッションは持たず、毎回パスワードを送る方式）
 function actionTeacherLogin(params) {
-  checkTeacherPassword(params);
-  const settings = getSettingsMap();
-  return { className: settings['クラス名'] || '', teacherName: settings['担任名'] || '' };
+  const settings = checkTeacherPassword(params);
+  return {
+    className: settings['クラス名'] || '',
+    teacherName: settings['担任名'] || '',
+    lessons: getLessonsList('teacher'),
+  };
 }
 
-// 授業一覧（teacher は全件、student は公開済みのみ）
-function actionGetLessons(params) {
+// 教師の初回パスワード登録（パスワードが未設定のときだけ成功する）
+function actionRegisterTeacherPassword(params) {
+  const password = params.password;
+  if (!password || String(password).length < 4) {
+    throw new Error('パスワードは4文字以上で設定してください');
+  }
+  const settings = getSettingsMap();
+  if (settings['教師パスワード'] && String(settings['教師パスワード']).trim()) {
+    throw new Error('すでにパスワードが設定されています。ログインからお試しください。');
+  }
+  setSettingValue('教師パスワード', String(password));
+  return {
+    className: settings['クラス名'] || '',
+    teacherName: settings['担任名'] || '',
+    lessons: getLessonsList('teacher'),
+  };
+}
+
+// 教師の設定（名前・クラス名・パスワード）を更新する
+function actionUpdateTeacherSettings(params) {
+  const settings = checkTeacherPassword(params);
+  const updates = {};
+  if (params.teacherName !== undefined) updates['担任名'] = String(params.teacherName);
+  if (params.className !== undefined) updates['クラス名'] = String(params.className);
+  if (params.newPassword) {
+    if (String(params.newPassword).length < 4) {
+      throw new Error('パスワードは4文字以上で設定してください');
+    }
+    updates['教師パスワード'] = String(params.newPassword);
+  }
+  if (Object.keys(updates).length > 0) {
+    setSettingValues(updates);
+  }
+  const merged = Object.assign({}, settings, updates);
+  return { className: merged['クラス名'] || '', teacherName: merged['担任名'] || '' };
+}
+
+// 授業一覧の中身を組み立てる（teacher は全件、それ以外は公開済みのみ）
+function getLessonsList(role) {
+  ensureLessonThemeColumn();
   const sheet = getSheet(SHEET_LESSONS);
   const objs = sheetToObjects(sheet);
   let lessons = objs.map((o) => ({
@@ -432,12 +609,23 @@ function actionGetLessons(params) {
     title: o['タイトル'] || '',
     question: o['発問'] || '',
     published: isTrue(o['公開']),
+    theme: o['テーマ'] || '',
   }));
-  if (params.role !== 'teacher') {
+  if (role !== 'teacher') {
     lessons = lessons.filter((l) => l.published);
   }
   lessons.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
-  return { lessons: lessons };
+  return lessons;
+}
+
+// 授業一覧（teacher は全件、student は公開済みのみ）
+function actionGetLessons(params) {
+  if (params.role === 'teacher') {
+    checkTeacherPassword(params);
+  } else {
+    checkStudentToken(params);
+  }
+  return { lessons: getLessonsList(params.role) };
 }
 
 // 授業を新規作成（教師のみ）
@@ -446,6 +634,7 @@ function actionCreateLesson(params) {
   if (!params.title) throw new Error('タイトルを入力してください');
   if (!params.question) throw new Error('発問（ふりかえりの問い）を入力してください');
 
+  ensureLessonThemeColumn();
   const sheet = getSheet(SHEET_LESSONS);
   const lessonId = 'L' + new Date().getTime();
   const published = isTrue(params.published);
@@ -455,6 +644,7 @@ function actionCreateLesson(params) {
     params.title,
     params.question,
     published,
+    params.theme || '',
   ]);
   return { lessonId: lessonId };
 }
@@ -474,8 +664,53 @@ function actionSetLessonPublished(params) {
   throw new Error('対象の授業が見つかりません');
 }
 
+// テーマの一覧（教師のみ）
+function actionGetThemes(params) {
+  checkTeacherPassword(params);
+  return { themes: getThemeList() };
+}
+
+// テーマを新規追加（教師のみ）
+function actionAddTheme(params) {
+  checkTeacherPassword(params);
+  const name = params.name && String(params.name).trim();
+  if (!name) throw new Error('テーマ名を入力してください');
+
+  const themes = getThemeList();
+  if (themes.indexOf(name) !== -1) {
+    throw new Error('同じテーマが既に登録されています');
+  }
+  ensureThemeSheet().appendRow([name]);
+  return { themes: getThemeList() };
+}
+
+// テーマを削除（使用中の授業があるテーマは削除できない・教師のみ）
+function actionRemoveTheme(params) {
+  checkTeacherPassword(params);
+  const name = params.name && String(params.name).trim();
+  if (!name) throw new Error('テーマ名が必要です');
+
+  ensureLessonThemeColumn();
+  const lessonObjs = sheetToObjects(getSheet(SHEET_LESSONS));
+  const inUse = lessonObjs.some((l) => String(l['テーマ'] || '') === name);
+  if (inUse) {
+    throw new Error('このテーマは使用中の授業があるため削除できません');
+  }
+
+  const sheet = ensureThemeSheet();
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]).trim() === name) {
+      sheet.deleteRow(i + 1);
+      return { themes: getThemeList() };
+    }
+  }
+  throw new Error('テーマが見つかりません');
+}
+
 // 生徒が「ふりかえり」を提出（既存があれば上書き更新）
 function actionSubmitReflection(params) {
+  checkStudentToken(params);
   if (!params.studentName) throw new Error('生徒名が必要です');
   if (!params.lessonId) throw new Error('授業IDが必要です');
 
@@ -510,7 +745,7 @@ function actionGetResponsesForLesson(params) {
     (o) => String(o['授業ID']) === String(params.lessonId)
   );
   const rosterNames = sheetToObjects(getSheet(SHEET_ROSTER))
-    .map((o) => o['生徒名'])
+    .map((o) => getStudentIdentifier(o))
     .filter((n) => !!n);
 
   const byName = {};
@@ -572,12 +807,10 @@ function actionSaveComment(params) {
   throw new Error('対象の回答が見つかりません（生徒がまだ提出していない可能性があります）');
 }
 
-// 生徒が自分の過去の記録（ふりかえり＋先生のコメント等）を見る
-function actionGetMyRecords(params) {
-  if (!params.studentName) throw new Error('生徒名が必要です');
-
+// 生徒の過去の記録（ふりかえり＋先生のコメント等）の中身を組み立てる
+function getMyRecordsList(studentName) {
   const respObjs = sheetToObjects(getSheet(SHEET_RESPONSES)).filter(
-    (o) => o['生徒名'] === params.studentName
+    (o) => o['生徒名'] === studentName
   );
   const lessonObjs = sheetToObjects(getSheet(SHEET_LESSONS));
   const lessonMap = {};
@@ -592,6 +825,7 @@ function actionGetMyRecords(params) {
       title: lesson['タイトル'] || '(削除された授業)',
       date: formatDate(lesson['日付']),
       question: lesson['発問'] || '',
+      theme: lesson['テーマ'] || '',
       text: o['回答内容'] || '',
       submittedAt: formatDateTime(o['提出日時']),
       comment: o['教師コメント'] || '',
@@ -602,45 +836,133 @@ function actionGetMyRecords(params) {
   });
 
   records.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
-  return { records: records };
+  return records;
 }
 
-// ============================================================
-// 教師用：生徒の管理（スプレッドシートを直接開かずに操作できるようにする）
-// ============================================================
+// 生徒が自分の過去の記録（ふりかえり＋先生のコメント等）を見る
+function actionGetMyRecords(params) {
+  checkStudentToken(params);
+  if (!params.studentName) throw new Error('生徒名が必要です');
+  return { records: getMyRecordsList(params.studentName) };
+}
+
+// 特定の生徒の全回答履歴をまとめて返す（テーマ別タブはフロント側で振り分ける・教師のみ）
+function actionGetAllResponsesForStudent(params) {
+  checkTeacherPassword(params);
+  const studentName = params.studentName && String(params.studentName).trim();
+  if (!studentName) throw new Error('生徒名が必要です');
+  ensureLessonThemeColumn();
+  return { records: getMyRecordsList(studentName) };
+}
+
+// 生徒用トークンが既に発行済みかどうかを確認する（教師のみ・新規発行はしない）
+function actionGetStudentTokenStatus(params) {
+  checkTeacherPassword(params);
+  const settings = getSettingsMap();
+  return { token: String(settings[SETTING_STUDENT_TOKEN] || '') };
+}
+
+// 特定の生徒の、テーマごとの平均評価（現在使用中のテーマだけを頂点にする・教師のみ）
+function actionGetThemeEvaluationSummary(params) {
+  checkTeacherPassword(params);
+  const studentName = params.studentName && String(params.studentName).trim();
+  if (!studentName) throw new Error('生徒名が必要です');
+
+  ensureLessonThemeColumn();
+  const lessonObjs = sheetToObjects(getSheet(SHEET_LESSONS));
+  const themeByLessonId = {};
+  const usedThemes = [];
+  lessonObjs.forEach((l) => {
+    const theme = String(l['テーマ'] || '').trim();
+    themeByLessonId[String(l['授業ID'])] = theme;
+    if (theme && usedThemes.indexOf(theme) === -1) usedThemes.push(theme);
+  });
+
+  const sums = {};
+  const counts = {};
+  sheetToObjects(getSheet(SHEET_RESPONSES))
+    .filter((o) => o['生徒名'] === studentName)
+    .forEach((o) => {
+      const theme = themeByLessonId[String(o['授業ID'])];
+      if (!theme) return;
+      const rating = o['評価'];
+      if (rating === '' || rating === null || rating === undefined) return;
+      const n = Number(rating);
+      if (isNaN(n)) return;
+      sums[theme] = (sums[theme] || 0) + n;
+      counts[theme] = (counts[theme] || 0) + 1;
+    });
+
+  const summary = usedThemes.map((theme) => ({
+    theme: theme,
+    average: counts[theme] ? Math.round((sums[theme] / counts[theme]) * 10) / 10 : 0,
+  }));
+
+  return { summary: summary };
+}
+
+// 生徒用URLのトークンを発行／再発行する（教師のみ）
+function actionGetStudentToken(params) {
+  checkTeacherPassword(params);
+
+  const sheet = getSheet(SHEET_SETTINGS);
+  const data = sheet.getDataRange().getValues();
+  let rowIndex = -1;
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === SETTING_STUDENT_TOKEN) {
+      rowIndex = i;
+      break;
+    }
+  }
+
+  let token = rowIndex !== -1 ? String(data[rowIndex][1] || '') : '';
+  if (!token || isTrue(params.regenerate)) {
+    token = Utilities.getUuid().replace(/-/g, '');
+    if (rowIndex !== -1) {
+      sheet.getRange(rowIndex + 1, 2).setValue(token);
+    } else {
+      sheet.appendRow([SETTING_STUDENT_TOKEN, token]);
+    }
+  }
+
+  return { token: token };
+}
 
 // 名簿の一覧（パスワードの値そのものは返さず、設定済みかどうかだけ返す）
 function actionGetRosterAdmin(params) {
   checkTeacherPassword(params);
   const objs = sheetToObjects(getSheet(SHEET_ROSTER));
   const roster = objs
-    .filter((o) => !!o['生徒名'])
     .map((o) => ({
       number: o['出席番号'] !== undefined && o['出席番号'] !== null ? String(o['出席番号']) : '',
-      name: o['生徒名'],
+      name: getStudentIdentifier(o),
+      hasName: !!(o['生徒名'] && String(o['生徒名']).trim()),
       hasPassword: !!(o['パスワード'] && String(o['パスワード']).trim()),
-    }));
+    }))
+    .filter((s) => !!s.name);
   return { roster: roster };
 }
 
-// 生徒を名簿に追加する（パスワードは空のまま＝本人が初回ログイン時に設定）
+// 生徒を名簿に追加する（パスワードは空のまま＝本人が初回ログイン時に設定。
+// 生徒名を空にして出席番号だけで登録することもできる）
 function actionAddStudent(params) {
   checkTeacherPassword(params);
   const name = params.name && String(params.name).trim();
-  if (!name) throw new Error('生徒名を入力してください');
+  const number = params.number && String(params.number).trim();
+  if (!name && !number) {
+    throw new Error('生徒名か出席番号のどちらかを入力してください');
+  }
 
   const sheet = getSheet(SHEET_ROSTER);
   const data = sheet.getDataRange().getValues();
   const headers = data[0];
-  const nameCol = headers.indexOf('生徒名');
+  const identifier = getStudentIdentifier({ '生徒名': name, '出席番号': number });
 
-  for (let i = 1; i < data.length; i++) {
-    if (String(data[i][nameCol]).trim() === name) {
-      throw new Error('同じ名前の生徒が既に登録されています');
-    }
+  if (findRosterRowIndex(data, headers, identifier) !== -1) {
+    throw new Error('同じ生徒（名前または出席番号）が既に登録されています');
   }
 
-  sheet.appendRow([params.number || '', name, '']);
+  sheet.appendRow([number || '', name || '', '']);
   return {};
 }
 
