@@ -135,6 +135,16 @@
     font-size:13.5px;
   }
   .tab-row button.active{ background:var(--navy); color:#fff; }
+  .theme-tab-row{ display:flex; gap:8px; flex-wrap:wrap; margin:10px 0 4px; }
+  .theme-tab-row button{
+    padding:8px 14px;
+    background:#F1ECDD;
+    color:var(--muted);
+    font-weight:700;
+    font-size:13px;
+    border-radius:999px;
+  }
+  .theme-tab-row button.active{ background:var(--navy); color:#fff; }
   .info-note{
     margin-top:14px;
     font-size:13px;
@@ -351,6 +361,31 @@
   .roster-row-head{ display:flex; align-items:center; justify-content:space-between; }
   .roster-name{ font-weight:700; color:var(--navy); }
 
+  .response-card{
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:10px 14px;
+    margin-bottom:8px;
+  }
+  .response-card.needs-review{ padding:18px; margin-bottom:14px; }
+  .response-summary-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    margin-top:6px;
+    flex-wrap:wrap;
+  }
+  .response-actions-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:8px;
+    margin-top:8px;
+    flex-wrap:wrap;
+  }
+
   .toast{
     position:fixed;
     bottom:22px;
@@ -393,10 +428,60 @@
     color:var(--navy);
   }
 
+  .modal-overlay{
+    position:fixed;
+    inset:0;
+    background:rgba(31,45,77,0.45);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:20px;
+    z-index:90;
+  }
+  .modal-overlay.top-aligned{
+    align-items:flex-start;
+    padding-top:56px;
+    overflow-y:auto;
+  }
+  .modal-card{
+    width:100%;
+    max-width:380px;
+    background:var(--card);
+    border-radius:18px;
+    padding:26px 24px;
+    box-shadow:0 20px 50px -20px rgba(0,0,0,0.5);
+  }
+  .modal-card h3{ font-size:17px; color:var(--navy); }
+  .modal-card.wide{ max-width:600px; max-height:85vh; overflow-y:auto; }
+
+  .theme-chip{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    background:#F1ECDD;
+    color:var(--navy);
+    font-size:12.5px;
+    font-weight:700;
+    padding:5px 6px 5px 12px;
+    border-radius:999px;
+  }
+  .theme-chip.plain{ padding:5px 12px; }
+  .theme-chip button{
+    background:none;
+    color:var(--danger);
+    font-weight:700;
+    font-size:14px;
+    line-height:1;
+    padding:2px 7px;
+    border-radius:999px;
+  }
+  .theme-chip button:hover{ background:#FBEAE7; }
+
   @media (max-width:480px){
     .auth-card{ padding:24px 20px; }
     .content{ padding:14px; }
     .topbar{ padding:14px 16px; }
+    .modal-overlay.top-aligned{ padding-top:24px; }
   }
 </style>
 
@@ -414,7 +499,12 @@
     className: '',
     teacherName: '',
     roster: [],
-    activeLoginTab: 'teacher',
+
+    studentMode: false,
+    studentToken: '',
+    teacherIssuedToken: '',
+    hasTeacherPassword: true,
+    showStudentCodeInput: false,
 
     // 生徒ログインのステップ： selectName -> setPassword(初回) または enterPassword(以降)
     studentLoginStep: 'selectName',
@@ -432,9 +522,22 @@
 
     lessons: [],
     lessonResponses: [],
+    expandedResponses: {},
     records: [],
     rosterAdmin: [],
     settingPasswordFor: null,
+
+    themes: [],
+    teacherLessonSort: 'date', // date | theme
+
+    showThemeFilterModal: false,
+    themeFilterFor: '',
+    themeFilterSelected: '',
+    themeFilterAllRecords: [],
+
+    showThemeSummaryModal: false,
+    themeSummaryFor: '',
+    themeSummaryData: [],
 
     busy: false,
     error: '',
@@ -473,11 +576,78 @@
     return data;
   }
 
-  function todayStr(){
-    const d = new Date();
+  function todayStr(d){
+    d = d || new Date();
     const m = String(d.getMonth()+1).padStart(2,'0');
     const day = String(d.getDate()).padStart(2,'0');
     return `${d.getFullYear()}-${m}-${day}`;
+  }
+
+  function nowDateTimeStr(){
+    const d = new Date();
+    const hh = String(d.getHours()).padStart(2,'0');
+    const mm = String(d.getMinutes()).padStart(2,'0');
+    return `${todayStr(d)} ${hh}:${mm}`;
+  }
+
+  // =========================================================
+  // 生徒モード（ハッシュ付きURL、または貼り付けた接続コードでのアクセス）
+  // =========================================================
+  function parseStudentCode(code){
+    const trimmed = String(code || '').trim().replace(/^#/, '');
+    if(!trimmed) return null;
+    const params = new URLSearchParams(trimmed);
+    const api = params.get('api');
+    const t = params.get('t');
+    if(api && t) return { api, t };
+    return null;
+  }
+
+  function parseHashParams(){
+    if(!location.hash) return;
+    const parsed = parseStudentCode(location.hash.slice(1));
+    if(parsed){
+      state.studentMode = true;
+      state.apiUrl = parsed.api;
+      state.studentToken = parsed.t;
+    }
+  }
+
+  async function initStudentModeAuto(){
+    state.busy = true; render();
+    try{
+      const res = await apiCall('ping');
+      state.connected = true;
+      state.className = res.className || '(クラス名未設定)';
+      state.teacherName = res.teacherName || '';
+      const rosterRes = await apiCall('getRoster', { token: state.studentToken });
+      state.roster = rosterRes.roster || [];
+      state.studentLoginStep = 'selectName';
+      state.pendingStudentName = '';
+    }catch(e){
+      state.connected = false;
+      state.studentMode = false;
+      state.error = '接続できませんでした：' + e.message;
+    }finally{
+      state.busy = false; render();
+    }
+  }
+
+  function toggleStudentCodeInput(show){
+    state.showStudentCodeInput = show;
+    state.error = '';
+    render();
+  }
+
+  async function handleConnectWithStudentCode(){
+    const code = document.getElementById('studentCodeInput').value;
+    const parsed = parseStudentCode(code);
+    if(!parsed){ state.error = '接続コードを正しく貼り付けてください'; render(); return; }
+    state.apiUrl = parsed.api;
+    state.studentToken = parsed.t;
+    state.studentMode = true;
+    state.error = '';
+    await initStudentModeAuto();
   }
 
   // =========================================================
@@ -493,11 +663,7 @@
       state.connected = true;
       state.className = res.className || '(クラス名未設定)';
       state.teacherName = res.teacherName || '';
-      const rosterRes = await apiCall('getRoster');
-      state.roster = rosterRes.roster || [];
-      state.activeLoginTab = 'teacher';
-      state.studentLoginStep = 'selectName';
-      state.pendingStudentName = '';
+      state.hasTeacherPassword = !!res.hasTeacherPassword;
     }catch(e){
       state.connected = false;
       state.error = '接続できませんでした：' + e.message;
@@ -512,18 +678,11 @@
     state.className = '';
     state.teacherName = '';
     state.roster = [];
-    state.activeLoginTab = 'teacher';
+    state.hasTeacherPassword = true;
+    state.showStudentCodeInput = false;
     state.studentLoginStep = 'selectName';
     state.pendingStudentName = '';
     state.error = '';
-    render();
-  }
-
-  function setLoginTab(tab){
-    state.activeLoginTab = tab;
-    state.error='';
-    state.studentLoginStep = 'selectName';
-    state.pendingStudentName = '';
     render();
   }
 
@@ -531,12 +690,40 @@
     const pw = document.getElementById('teacherPasswordInput').value;
     state.busy = true; state.error=''; render();
     try{
-      await apiCall('teacherLogin', { password: pw });
+      const res = await apiCall('teacherLogin', { password: pw });
       state.role = 'teacher';
       state.teacherPassword = pw;
       state.view = 'teacher';
       state.teacherSubView = 'list';
-      await loadTeacherLessons();
+      if(Array.isArray(res.lessons)){
+        state.lessons = res.lessons;
+      }else{
+        await loadTeacherLessons();
+      }
+    }catch(e){
+      state.error = e.message;
+    }finally{
+      state.busy = false; render();
+    }
+  }
+
+  async function handleRegisterTeacherPassword(){
+    const pw = document.getElementById('initTeacherPasswordInput').value;
+    const pw2 = document.getElementById('initTeacherPasswordConfirm').value;
+    if(pw.length < 4){ state.error='パスワードは4文字以上で設定してください'; render(); return; }
+    if(pw !== pw2){ state.error='パスワード（確認）が一致しません'; render(); return; }
+    state.busy = true; state.error=''; render();
+    try{
+      const res = await apiCall('registerTeacherPassword', { password: pw });
+      state.role = 'teacher';
+      state.teacherPassword = pw;
+      state.view = 'teacher';
+      state.teacherSubView = 'list';
+      if(Array.isArray(res.lessons)){
+        state.lessons = res.lessons;
+      }else{
+        await loadTeacherLessons();
+      }
     }catch(e){
       state.error = e.message;
     }finally{
@@ -550,7 +737,7 @@
     if(!name){ state.error='名前を選んでください'; render(); return; }
     state.busy = true; state.error=''; render();
     try{
-      const res = await apiCall('checkStudentAccount', { name });
+      const res = await apiCall('checkStudentAccount', { name, token: state.studentToken });
       state.pendingStudentName = name;
       state.studentLoginStep = res.hasPassword ? 'enterPassword' : 'setPassword';
     }catch(e){
@@ -575,8 +762,8 @@
     if(pw !== pw2){ state.error='パスワード（確認）が一致しません'; render(); return; }
     state.busy = true; state.error=''; render();
     try{
-      const res = await apiCall('registerStudentPassword', { name: state.pendingStudentName, password: pw });
-      await afterStudentLoginSuccess(res.studentName);
+      const res = await apiCall('registerStudentPassword', { name: state.pendingStudentName, password: pw, token: state.studentToken });
+      await afterStudentLoginSuccess(res);
     }catch(e){
       state.error = e.message;
     }finally{
@@ -590,8 +777,8 @@
     if(!pw){ state.error='パスワードを入力してください'; render(); return; }
     state.busy = true; state.error=''; render();
     try{
-      const res = await apiCall('studentLogin', { name: state.pendingStudentName, password: pw });
-      await afterStudentLoginSuccess(res.studentName);
+      const res = await apiCall('studentLogin', { name: state.pendingStudentName, password: pw, token: state.studentToken });
+      await afterStudentLoginSuccess(res);
     }catch(e){
       state.error = e.message;
     }finally{
@@ -599,12 +786,22 @@
     }
   }
 
-  async function afterStudentLoginSuccess(studentName){
+  async function afterStudentLoginSuccess(res){
     state.role = 'student';
-    state.studentName = studentName;
+    state.studentName = res.studentName;
     state.view = 'student';
     state.studentSubView = 'lessons';
-    await loadStudentData();
+    if(Array.isArray(res.lessons) && Array.isArray(res.records)){
+      state.lessons = res.lessons;
+      state.records = res.records;
+    }else{
+      const [lessonsRes, recordsRes] = await Promise.all([
+        apiCall('getLessons', { role:'student', token: state.studentToken }),
+        apiCall('getMyRecords', { studentName: res.studentName, token: state.studentToken }),
+      ]);
+      state.lessons = lessonsRes.lessons || [];
+      state.records = recordsRes.records || [];
+    }
   }
 
   function handleLogout(){
@@ -629,8 +826,39 @@
   async function loadTeacherLessons(){
     state.busy = true; render();
     try{
-      const res = await apiCall('getLessons', { role:'teacher' });
+      const res = await apiCall('getLessons', { role:'teacher', password: state.teacherPassword });
       state.lessons = res.lessons || [];
+    }catch(e){ state.error = e.message; }
+    finally{ state.busy = false; render(); }
+  }
+
+  async function loadThemes(){
+    state.busy = true; render();
+    try{
+      const res = await apiCall('getThemes', { password: state.teacherPassword });
+      state.themes = res.themes || [];
+    }catch(e){ state.error = e.message; }
+    finally{ state.busy = false; render(); }
+  }
+
+  async function loadStudentsTabData(){
+    state.busy = true; render();
+    try{
+      const [rosterRes, themesRes, tokenRes] = await Promise.allSettled([
+        apiCall('getRosterAdmin', { password: state.teacherPassword }),
+        apiCall('getThemes', { password: state.teacherPassword }),
+        apiCall('getStudentTokenStatus', { password: state.teacherPassword }),
+      ]);
+      if(rosterRes.status === 'fulfilled') state.rosterAdmin = rosterRes.value.roster || [];
+      if(themesRes.status === 'fulfilled') state.themes = themesRes.value.themes || [];
+      if(tokenRes.status === 'fulfilled') state.teacherIssuedToken = tokenRes.value.token || '';
+      // 名簿・テーマの取得に失敗した場合だけエラー表示する
+      // （生徒用トークンの確認だけが失敗しても、他のデータ表示は妨げない）
+      if(rosterRes.status === 'rejected'){
+        state.error = rosterRes.reason.message;
+      }else if(themesRes.status === 'rejected'){
+        state.error = themesRes.reason.message;
+      }
     }catch(e){ state.error = e.message; }
     finally{ state.busy = false; render(); }
   }
@@ -640,8 +868,14 @@
     state.error='';
     state.settingPasswordFor = null;
     if(v === 'list') loadTeacherLessons();
-    else if(v === 'students') loadRosterAdmin();
+    else if(v === 'students') loadStudentsTabData();
+    else if(v === 'create') loadThemes();
     else render();
+  }
+
+  function handleLessonSortChange(v){
+    state.teacherLessonSort = v;
+    render();
   }
 
   async function handleCreateLesson(){
@@ -649,30 +883,76 @@
     const title = document.getElementById('lessonTitleInput').value.trim();
     const question = document.getElementById('lessonQuestionInput').value.trim();
     const published = document.getElementById('lessonPublishCheckbox').checked;
+    const theme = document.getElementById('lessonThemeSelect').value;
     if(!title || !question){ state.error='タイトルと発問は必須です'; render(); return; }
     state.busy = true; state.error=''; render();
     try{
-      await apiCall('createLesson', { password: state.teacherPassword, date, title, question, published });
+      const res = await apiCall('createLesson', { password: state.teacherPassword, date, title, question, published, theme });
+      state.lessons.unshift({ lessonId: res.lessonId, date, title, question, published, theme });
       showToast('授業を作成しました');
       state.teacherSubView = 'list';
-      await loadTeacherLessons();
     }catch(e){ state.error = e.message; render(); }
-    finally{ state.busy = false; }
+    finally{ state.busy = false; render(); }
+  }
+
+  async function handleAddTheme(){
+    const name = document.getElementById('newThemeInput').value.trim();
+    if(!name){ state.error='テーマ名を入力してください'; render(); return; }
+    state.busy = true; state.error=''; render();
+    try{
+      const res = await apiCall('addTheme', { password: state.teacherPassword, name });
+      state.themes = res.themes || [];
+      showToast(name + ' を追加しました');
+    }catch(e){ state.error = e.message; render(); }
+    finally{ state.busy = false; render(); }
+  }
+
+  async function handleRemoveTheme(idx){
+    const name = state.themes[idx];
+    if(!confirm(name + ' を削除します。よろしいですか？')) return;
+    state.busy = true; state.error=''; render();
+    try{
+      const res = await apiCall('removeTheme', { password: state.teacherPassword, name });
+      state.themes = res.themes || [];
+      showToast(name + ' を削除しました');
+    }catch(e){ state.error = e.message; render(); }
+    finally{ state.busy = false; render(); }
+  }
+
+  async function handleUpdateTeacherSettings(){
+    const teacherName = document.getElementById('settingsTeacherNameInput').value.trim();
+    const className = document.getElementById('settingsClassNameInput').value.trim();
+    const newPassword = document.getElementById('settingsNewPasswordInput').value;
+    if(newPassword && newPassword.length < 4){ state.error='パスワードは4文字以上で設定してください'; render(); return; }
+    state.busy = true; state.error=''; render();
+    try{
+      const res = await apiCall('updateTeacherSettings', {
+        password: state.teacherPassword, teacherName, className, newPassword,
+      });
+      state.teacherName = res.teacherName || '';
+      state.className = res.className || '';
+      if(newPassword) state.teacherPassword = newPassword;
+      document.getElementById('settingsNewPasswordInput').value = '';
+      showToast('設定を保存しました');
+    }catch(e){ state.error = e.message; render(); }
+    finally{ state.busy = false; render(); }
   }
 
   async function handleTogglePublish(lessonId, newVal){
     state.busy = true; render();
     try{
       await apiCall('setLessonPublished', { password: state.teacherPassword, lessonId, published: newVal });
-      await loadTeacherLessons();
+      const lesson = state.lessons.find(l => l.lessonId === lessonId);
+      if(lesson) lesson.published = newVal;
       showToast(newVal ? '公開しました' : '非公開にしました');
     }catch(e){ state.error = e.message; render(); }
-    finally{ state.busy = false; }
+    finally{ state.busy = false; render(); }
   }
 
   async function openLessonDetail(lessonId){
     state.selectedLessonId = lessonId;
     state.teacherSubView = 'detail';
+    state.expandedResponses = {};
     state.busy = true; render();
     try{
       const res = await apiCall('getResponsesForLesson', { password: state.teacherPassword, lessonId });
@@ -681,10 +961,18 @@
     finally{ state.busy = false; render(); }
   }
 
+  function toggleResponseExpanded(idx){
+    const r = state.lessonResponses[idx];
+    const hasFeedback = !!(r && (r.comment || r.rating || r.liked));
+    const currentlyExpanded = state.expandedResponses[idx] !== undefined ? state.expandedResponses[idx] : !hasFeedback;
+    state.expandedResponses[idx] = !currentlyExpanded;
+    render();
+  }
+
   async function handleSaveComment(idx){
     const row = state.lessonResponses[idx];
     const comment = document.getElementById('comment-input-'+idx).value;
-    const rating = document.getElementById('rating-input-'+idx).value;
+    const ratingRaw = document.getElementById('rating-input-'+idx).value;
     const liked = document.getElementById('liked-input-'+idx).checked;
     state.busy = true; render();
     try{
@@ -692,10 +980,13 @@
         password: state.teacherPassword,
         lessonId: state.selectedLessonId,
         studentName: row.studentName,
-        comment, rating, liked,
+        comment, rating: ratingRaw, liked,
       });
-      const res = await apiCall('getResponsesForLesson', { password: state.teacherPassword, lessonId: state.selectedLessonId });
-      state.lessonResponses = res.responses || [];
+      row.comment = comment;
+      row.rating = ratingRaw ? Number(ratingRaw) : null;
+      row.liked = liked;
+      row.commentedAt = nowDateTimeStr();
+      delete state.expandedResponses[idx];
       showToast(row.studentName + ' さんへの評価・コメントを保存しました');
     }catch(e){ state.error = e.message; }
     finally{ state.busy = false; render(); }
@@ -704,26 +995,91 @@
   // =========================================================
   // ハンドラ：先生による生徒管理
   // =========================================================
-  async function loadRosterAdmin(){
+  function studentIdentifierFor(name, number){
+    const n = (name || '').trim();
+    if(n) return n;
+    const num = (number || '').trim();
+    return num ? num + '番' : '';
+  }
+
+  async function openThemeFilterModal(idx){
+    const student = state.rosterAdmin[idx];
+    state.showThemeFilterModal = true;
+    state.themeFilterFor = student.name;
+    state.themeFilterSelected = state.themes.length > 0 ? state.themes[0] : '';
+    state.themeFilterAllRecords = [];
+    state.error = '';
     state.busy = true; render();
     try{
-      const res = await apiCall('getRosterAdmin', { password: state.teacherPassword });
-      state.rosterAdmin = res.roster || [];
+      const res = await apiCall('getAllResponsesForStudent', { password: state.teacherPassword, studentName: student.name });
+      state.themeFilterAllRecords = res.records || [];
     }catch(e){ state.error = e.message; }
     finally{ state.busy = false; render(); }
+  }
+
+  function closeThemeResponsesModal(){
+    state.showThemeFilterModal = false;
+    render();
+  }
+
+  function selectThemeFilterTab(i){
+    state.themeFilterSelected = state.themes[i];
+    render();
+  }
+
+  async function openThemeSummaryModal(idx){
+    const student = state.rosterAdmin[idx];
+    state.showThemeSummaryModal = true;
+    state.themeSummaryFor = student.name;
+    state.themeSummaryData = [];
+    state.error='';
+    state.busy = true; render();
+    try{
+      const res = await apiCall('getThemeEvaluationSummary', {
+        password: state.teacherPassword, studentName: student.name,
+      });
+      state.themeSummaryData = res.summary || [];
+    }catch(e){ state.error = e.message; }
+    finally{ state.busy = false; render(); }
+  }
+
+  function closeThemeSummaryModal(){
+    state.showThemeSummaryModal = false;
+    render();
+  }
+
+  function buildStudentCode(){
+    return 'api=' + encodeURIComponent(state.apiUrl) + '&t=' + state.teacherIssuedToken;
+  }
+
+  async function handleIssueStudentUrl(regenerate){
+    if(regenerate && !confirm('再発行すると、今までの接続コードは使えなくなります。よろしいですか？')) return;
+    state.busy = true; state.error=''; render();
+    try{
+      const res = await apiCall('getStudentToken', { password: state.teacherPassword, regenerate: regenerate ? 'true' : '' });
+      state.teacherIssuedToken = res.token;
+      showToast(regenerate ? '接続コードを再発行しました' : '接続コードを発行しました');
+    }catch(e){ state.error = e.message; render(); }
+    finally{ state.busy = false; render(); }
+  }
+
+  function handleCopyStudentUrl(){
+    navigator.clipboard.writeText(buildStudentCode())
+      .then(() => showToast('接続コードをコピーしました'))
+      .catch(() => showToast('コピーに失敗しました。コードを選択してコピーしてください'));
   }
 
   async function handleAddStudent(){
     const number = document.getElementById('newStudentNumber').value.trim();
     const name = document.getElementById('newStudentName').value.trim();
-    if(!name){ state.error='生徒名を入力してください'; render(); return; }
+    if(!name && !number){ state.error='生徒名か出席番号のどちらかを入力してください'; render(); return; }
     state.busy = true; state.error=''; render();
     try{
       await apiCall('addStudent', { password: state.teacherPassword, number, name });
-      showToast(name + ' さんを追加しました');
-      await loadRosterAdmin();
+      state.rosterAdmin.push({ number, name: studentIdentifierFor(name, number), hasName: !!name, hasPassword: false });
+      showToast((name || number + '番') + ' を追加しました');
     }catch(e){ state.error = e.message; render(); }
-    finally{ state.busy = false; }
+    finally{ state.busy = false; render(); }
   }
 
   function toggleSetPasswordForm(idx){
@@ -738,11 +1094,11 @@
     state.busy = true; state.error=''; render();
     try{
       await apiCall('setStudentPassword', { password: state.teacherPassword, name: student.name, newPassword: pw });
+      student.hasPassword = true;
       showToast(student.name + ' さんのパスワードを設定しました');
       state.settingPasswordFor = null;
-      await loadRosterAdmin();
     }catch(e){ state.error = e.message; render(); }
-    finally{ state.busy = false; }
+    finally{ state.busy = false; render(); }
   }
 
   async function handleResetStudentPassword(idx){
@@ -751,10 +1107,10 @@
     state.busy = true; state.error=''; render();
     try{
       await apiCall('resetStudentPassword', { password: state.teacherPassword, name: student.name });
+      student.hasPassword = false;
       showToast(student.name + ' さんのパスワードをリセットしました');
-      await loadRosterAdmin();
     }catch(e){ state.error = e.message; render(); }
-    finally{ state.busy = false; }
+    finally{ state.busy = false; render(); }
   }
 
   async function handleRemoveStudent(idx){
@@ -763,24 +1119,15 @@
     state.busy = true; state.error=''; render();
     try{
       await apiCall('removeStudent', { password: state.teacherPassword, name: student.name });
+      state.rosterAdmin.splice(idx, 1);
       showToast(student.name + ' さんを削除しました');
-      await loadRosterAdmin();
     }catch(e){ state.error = e.message; render(); }
-    finally{ state.busy = false; }
+    finally{ state.busy = false; render(); }
   }
 
   // =========================================================
   // ハンドラ：生徒
   // =========================================================
-  async function loadStudentData(){
-    const [lessonsRes, recordsRes] = await Promise.all([
-      apiCall('getLessons', { role:'student' }),
-      apiCall('getMyRecords', { studentName: state.studentName }),
-    ]);
-    state.lessons = lessonsRes.lessons || [];
-    state.records = recordsRes.records || [];
-  }
-
   function setStudentSubView(v){
     state.studentSubView = v;
     state.writingLessonId = null;
@@ -792,7 +1139,7 @@
   async function refreshStudentRecords(){
     state.busy = true; render();
     try{
-      const res = await apiCall('getMyRecords', { studentName: state.studentName });
+      const res = await apiCall('getMyRecords', { studentName: state.studentName, token: state.studentToken });
       state.records = res.records || [];
     }catch(e){ state.error = e.message; }
     finally{ state.busy = false; render(); }
@@ -808,13 +1155,77 @@
     if(!text){ state.error='ひとことでも、自分の考えを書いてみよう'; render(); return; }
     state.busy = true; state.error=''; render();
     try{
-      await apiCall('submitReflection', { studentName: state.studentName, lessonId, text });
-      const res = await apiCall('getMyRecords', { studentName: state.studentName });
+      await apiCall('submitReflection', { studentName: state.studentName, lessonId, text, token: state.studentToken });
+      const res = await apiCall('getMyRecords', { studentName: state.studentName, token: state.studentToken });
       state.records = res.records || [];
       state.writingLessonId = null;
       showToast('送信しました');
     }catch(e){ state.error = e.message; }
     finally{ state.busy = false; render(); }
+  }
+
+  // =========================================================
+  // レーダーチャート（評価まとめ）
+  // =========================================================
+  function buildRadarSvg(categories, values, maxValue){
+    const size = 480;
+    const cx = size / 2;
+    const cy = size / 2 + 6;
+    const R = 150;
+    const levels = Math.max(1, Math.round(maxValue));
+    const n = categories.length;
+    const angleFor = (i) => (-90 + (360 / n) * i) * Math.PI / 180;
+
+    let gridCircles = '';
+    let levelLabels = '';
+    for(let lvl = 1; lvl <= levels; lvl++){
+      const r = R * (lvl / levels);
+      const isOuter = lvl === levels;
+      gridCircles += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${isOuter ? '#1F2D4D' : '#E6DEC9'}" stroke-width="${isOuter ? 1.5 : 1}" stroke-dasharray="${isOuter ? '0' : '3,3'}"/>`;
+      const val = Math.round(maxValue * (lvl / levels) * 10) / 10;
+      levelLabels += `<text x="${cx + 6}" y="${cy - r}" font-size="11" fill="#7A7363" font-family="'Noto Sans JP', sans-serif" dominant-baseline="middle">${val}</text>`;
+    }
+
+    let spokes = '';
+    let axisLabels = '';
+    categories.forEach((cat, i) => {
+      const a = angleFor(i);
+      const x2 = cx + R * Math.cos(a);
+      const y2 = cy + R * Math.sin(a);
+      spokes += `<line x1="${cx}" y1="${cy}" x2="${x2}" y2="${y2}" stroke="#E6DEC9" stroke-width="1"/>`;
+      const lx = cx + (R + 34) * Math.cos(a);
+      const ly = cy + (R + 34) * Math.sin(a);
+      const anchor = Math.abs(Math.cos(a)) < 0.15 ? 'middle' : (Math.cos(a) > 0 ? 'start' : 'end');
+      axisLabels += `<text x="${lx}" y="${ly}" text-anchor="${anchor}" dominant-baseline="middle" font-size="14" font-weight="700" font-family="'Zen Maru Gothic', sans-serif" fill="#1F2D4D">${escapeHtml(cat)}</text>`;
+    });
+
+    const pointFor = (i) => {
+      const a = angleFor(i);
+      const v = Math.max(0, Math.min(maxValue, values[i] || 0));
+      const r = R * (v / maxValue);
+      return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
+    };
+
+    const polygonPoints = categories.map((cat, i) => {
+      const p = pointFor(i);
+      return `${p.x},${p.y}`;
+    }).join(' ');
+
+    const dots = categories.map((cat, i) => {
+      const p = pointFor(i);
+      return `<circle cx="${p.x}" cy="${p.y}" r="5" fill="#C9971C" stroke="#fff" stroke-width="1.5"/>`;
+    }).join('');
+
+    return `
+      <svg viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;">
+        ${gridCircles}
+        ${spokes}
+        <polygon points="${polygonPoints}" fill="rgba(201,151,28,0.35)" stroke="#C9971C" stroke-width="2.5"/>
+        ${dots}
+        ${levelLabels}
+        ${axisLabels}
+      </svg>
+    `;
   }
 
   // =========================================================
@@ -830,7 +1241,8 @@
   }
 
   function renderLoadingOverlay(){
-    document.getElementById('loading-root').innerHTML = state.busy
+    const modalHandlesOwnLoading = state.showThemeFilterModal || state.showThemeSummaryModal;
+    document.getElementById('loading-root').innerHTML = (state.busy && !modalHandlesOwnLoading)
       ? `<div class="loading-overlay"><div class="spinner"></div><div class="loading-text">読み込み中…</div></div>`
       : '';
   }
@@ -853,7 +1265,43 @@
   }
 
   function renderConnectScreen(){
+    if(state.studentMode){
+      return `
+        <div class="auth-shell">
+          <div class="auth-card">
+            <div class="brand">
+              <h1>学習交流<span>シート</span></h1>
+            </div>
+            <p class="tagline">ふりかえりを記録し、積み重ねていくための学習ノート（試作版）</p>
+            ${state.connected ? renderStudentLoginForm() : `<p class="loading-line">接続しています…</p>`}
+            ${state.error ? `<div class="error-box">${escapeHtml(state.error)}</div>` : ''}
+          </div>
+        </div>
+      `;
+    }
+
     if(!state.connected){
+      if(state.showStudentCodeInput){
+        return `
+          <div class="auth-shell">
+            <div class="auth-card">
+              <div class="brand">
+                <h1>学習交流<span>シート</span></h1>
+              </div>
+              <p class="tagline">ふりかえりを記録し、積み重ねていくための学習ノート（試作版）</p>
+
+              <button class="back-link" onclick="toggleStudentCodeInput(false)">← 先生用の接続にもどる</button>
+              <label for="studentCodeInput">生徒用の接続コード</label>
+              <textarea id="studentCodeInput" placeholder="先生から受け取った接続コードを貼り付けてください" style="min-height:80px;"></textarea>
+              <button class="primary-btn" onclick="handleConnectWithStudentCode()" ${state.busy ? 'disabled' : ''}>
+                ${state.busy ? '接続中…' : '接続する'}
+              </button>
+
+              ${state.error ? `<div class="error-box">${escapeHtml(state.error)}</div>` : ''}
+            </div>
+          </div>
+        `;
+      }
       return `
         <div class="auth-shell">
           <div class="auth-card">
@@ -867,6 +1315,7 @@
             <button class="primary-btn" onclick="handleConnect()" ${state.busy ? 'disabled' : ''}>
               ${state.busy ? '接続中…' : '接続する'}
             </button>
+            <button class="link-btn" style="display:block;margin-top:14px;" onclick="toggleStudentCodeInput(true)">生徒の方はこちら（接続コードで入る）</button>
 
             ${state.error ? `<div class="error-box">${escapeHtml(state.error)}</div>` : ''}
           </div>
@@ -885,16 +1334,14 @@
             <button class="link-btn" onclick="handleChangeConnection()">接続先を選び直す</button>
           </div>
 
-          <div class="tab-row">
-            <button class="${state.activeLoginTab==='teacher'?'active':''}" onclick="setLoginTab('teacher')">先生としてログイン</button>
-            <button class="${state.activeLoginTab==='student'?'active':''}" onclick="setLoginTab('student')">生徒としてログイン</button>
-          </div>
+          ${state.hasTeacherPassword
+            ? renderTeacherLoginForm()
+            : `<p class="muted" style="font-size:13.5px;">はじめてのご利用ですね。表示されているモーダルからパスワードを設定してください。</p>`}
 
-          ${state.activeLoginTab === 'teacher' ? renderTeacherLoginForm() : renderStudentLoginForm()}
-
-          ${state.error ? `<div class="error-box">${escapeHtml(state.error)}</div>` : ''}
+          ${state.hasTeacherPassword && state.error ? `<div class="error-box">${escapeHtml(state.error)}</div>` : ''}
         </div>
       </div>
+      ${!state.hasTeacherPassword ? renderInitialTeacherPasswordModal() : ''}
     `;
   }
 
@@ -903,6 +1350,23 @@
       <label for="teacherPasswordInput">教師パスワード</label>
       <input id="teacherPasswordInput" type="password" placeholder="パスワードを入力">
       <button class="primary-btn" onclick="handleTeacherLogin()" ${state.busy?'disabled':''}>ログイン</button>
+    `;
+  }
+
+  function renderInitialTeacherPasswordModal(){
+    return `
+      <div class="modal-overlay">
+        <div class="modal-card">
+          <h3>初回ログイン</h3>
+          <p class="muted" style="font-size:13.5px;">はじめてのご利用ですね。今後使う先生用パスワードを設定してください。</p>
+          <label for="initTeacherPasswordInput">あたらしいパスワード（4文字以上）</label>
+          <input id="initTeacherPasswordInput" type="password" placeholder="4文字以上で入力">
+          <label for="initTeacherPasswordConfirm">もう一度入力（確認）</label>
+          <input id="initTeacherPasswordConfirm" type="password" placeholder="もう一度同じパスワードを入力">
+          <button class="primary-btn" onclick="handleRegisterTeacherPassword()" ${state.busy?'disabled':''}>設定してはじめる</button>
+          ${state.error ? `<div class="error-box">${escapeHtml(state.error)}</div>` : ''}
+        </div>
+      </div>
     `;
   }
 
@@ -953,15 +1417,19 @@
           <button class="${state.teacherSubView==='create'?'active':''}" onclick="setTeacherSubView('create')">授業を作成</button>
           <button class="${(state.teacherSubView==='list'||state.teacherSubView==='detail')?'active':''}" onclick="setTeacherSubView('list')">授業一覧</button>
           <button class="${state.teacherSubView==='students'?'active':''}" onclick="setTeacherSubView('students')">生徒管理</button>
+          <button class="${state.teacherSubView==='settings'?'active':''}" onclick="setTeacherSubView('settings')">設定</button>
         </nav>
         <main class="content">
           ${state.error ? `<div class="error-box">${escapeHtml(state.error)}</div>` : ''}
           ${state.teacherSubView === 'create' ? renderCreateLessonForm()
             : state.teacherSubView === 'detail' ? renderLessonDetail()
             : state.teacherSubView === 'students' ? renderStudentAdmin()
+            : state.teacherSubView === 'settings' ? renderTeacherSettings()
             : renderLessonListForTeacher()}
         </main>
       </div>
+      ${state.showThemeFilterModal ? renderThemeResponsesModal() : ''}
+      ${state.showThemeSummaryModal ? renderThemeSummaryModal() : ''}
     `;
   }
 
@@ -981,11 +1449,42 @@
           <label for="lessonQuestionInput">発問（ふりかえりで生徒に問いたいこと）</label>
           <textarea id="lessonQuestionInput" placeholder="例：今日の話し合いを通して、自分の考えはどう深まりましたか？"></textarea>
         </div>
+        <div class="field-row">
+          <label for="lessonThemeSelect">テーマ</label>
+          <select id="lessonThemeSelect">
+            <option value="">未設定</option>
+            ${state.themes.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('')}
+          </select>
+        </div>
         <div class="checkbox-row">
           <input id="lessonPublishCheckbox" type="checkbox" checked>
           <label for="lessonPublishCheckbox">今すぐ生徒に公開する</label>
         </div>
         <button class="primary-btn" onclick="handleCreateLesson()" ${state.busy?'disabled':''}>この授業を保存</button>
+      </div>
+      ${renderThemeManager()}
+    `;
+  }
+
+  function renderThemeManager(){
+    return `
+      <div class="card">
+        <h2 style="font-size:16px;color:var(--navy);">テーマ管理</h2>
+        <div class="card-actions" style="flex-wrap:wrap;">
+          ${state.themes.length === 0
+            ? '<span class="muted" style="font-size:13px;">テーマがまだありません</span>'
+            : state.themes.map((t, i) => `
+              <span class="theme-chip">
+                ${escapeHtml(t)}
+                <button onclick="handleRemoveTheme(${i})" ${state.busy?'disabled':''} title="削除">×</button>
+              </span>
+            `).join('')}
+        </div>
+        <div class="field-row">
+          <label for="newThemeInput">新しいテーマを追加</label>
+          <input id="newThemeInput" type="text" placeholder="例：環境">
+        </div>
+        <button class="ghost-btn" onclick="handleAddTheme()" ${state.busy?'disabled':''}>追加する</button>
       </div>
     `;
   }
@@ -994,21 +1493,39 @@
     if(state.lessons.length === 0){
       return `<div class="empty-state">まだ授業がありません。「授業を作成」から最初の授業をつくってみましょう。</div>`;
     }
-    return state.lessons.map(l => `
-      <div class="card">
-        <div class="lesson-card-head">
-          <div>
-            <div class="lesson-date">${escapeHtml(l.date)}</div>
-            <div class="lesson-title">${escapeHtml(l.title)}</div>
-          </div>
-          <span class="badge ${l.published?'published':'unpublished'}">${l.published?'公開中':'非公開'}</span>
-        </div>
-        <div class="card-actions">
-          <button class="gold-btn" onclick="openLessonDetail('${l.lessonId}')">回答を見る・評価する</button>
-          <button class="ghost-btn" onclick="handleTogglePublish('${l.lessonId}', ${!l.published})">${l.published?'非公開にする':'公開する'}</button>
-        </div>
+    const sorted = [...state.lessons].sort((a, b) => {
+      if(state.teacherLessonSort === 'theme'){
+        const ta = a.theme || '';
+        const tb = b.theme || '';
+        if(ta !== tb) return ta < tb ? -1 : 1;
+      }
+      return a.date < b.date ? 1 : a.date > b.date ? -1 : 0;
+    });
+    return `
+      <div class="field-row" style="max-width:220px;">
+        <label for="lessonSortSelect">並び替え</label>
+        <select id="lessonSortSelect" onchange="handleLessonSortChange(this.value)">
+          <option value="date" ${state.teacherLessonSort==='date'?'selected':''}>日付順</option>
+          <option value="theme" ${state.teacherLessonSort==='theme'?'selected':''}>テーマ順</option>
+        </select>
       </div>
-    `).join('');
+      ${sorted.map(l => `
+        <div class="card">
+          <div class="lesson-card-head">
+            <div>
+              <div class="lesson-date">${escapeHtml(l.date)}</div>
+              <div class="lesson-title">${escapeHtml(l.title)}</div>
+            </div>
+            <span class="badge ${l.published?'published':'unpublished'}">${l.published?'公開中':'非公開'}</span>
+          </div>
+          ${l.theme ? `<div style="margin-top:8px;"><span class="theme-chip plain">${escapeHtml(l.theme)}</span></div>` : ''}
+          <div class="card-actions">
+            <button class="gold-btn" onclick="openLessonDetail('${l.lessonId}')">回答を見る・評価する</button>
+            <button class="ghost-btn" onclick="handleTogglePublish('${l.lessonId}', ${!l.published})">${l.published?'非公開にする':'公開する'}</button>
+          </div>
+        </div>
+      `).join('')}
+    `;
   }
 
   function renderLessonDetail(){
@@ -1023,59 +1540,143 @@
         </div>
         <p class="muted" style="font-size:13px;margin:-4px 0 14px;">提出状況：${submittedCount} / ${state.lessonResponses.length} 人</p>
       ` : ''}
-      ${state.lessonResponses.map((r, idx) => `
-        <div class="card roster-row">
+      ${state.lessonResponses.map((r, idx) => renderResponseCard(r, idx)).join('')}
+    `;
+  }
+
+  function renderResponseCard(r, idx){
+    if(!r.submitted){
+      return `
+        <div class="response-card">
           <div class="roster-row-head">
             <span class="roster-name">${escapeHtml(r.studentName)}</span>
-            <span class="badge ${r.submitted?'done':'pending'}">${r.submitted?'提出済み':'未提出'}</span>
+            <span class="badge pending">未提出</span>
           </div>
-          ${r.submitted ? `
-            <div class="response-text-box">${escapeHtml(r.text)}</div>
-            <p class="muted" style="font-size:11.5px;margin:6px 0 0;">提出：${escapeHtml(r.submittedAt)}</p>
-
-            <div class="eval-controls">
-              <label style="margin:0;" for="rating-input-${idx}">評価</label>
-              <select id="rating-input-${idx}">
-                <option value="">未評価</option>
-                ${[1,2,3,4,5,6,7,8,9,10].map(n => `<option value="${n}" ${r.rating===n?'selected':''}>${n}</option>`).join('')}
-              </select>
-              <label class="like-toggle-label" for="liked-input-${idx}">
-                <input type="checkbox" id="liked-input-${idx}" ${r.liked?'checked':''}> いいね
-              </label>
-            </div>
-
-            <label for="comment-input-${idx}">先生からのコメント</label>
-            <textarea id="comment-input-${idx}" placeholder="よいところを認めて、次への一歩を添えましょう">${escapeHtml(r.comment)}</textarea>
-            <button class="gold-btn" style="margin-top:8px;" onclick="handleSaveComment(${idx})" ${state.busy?'disabled':''}>評価・コメントを保存</button>
-          ` : `<p class="muted" style="font-size:13px;margin-top:8px;">まだ提出していません。</p>`}
         </div>
-      `).join('')}
+      `;
+    }
+
+    const hasFeedback = !!(r.comment || r.rating || r.liked);
+    const isExpanded = state.expandedResponses[idx] !== undefined ? state.expandedResponses[idx] : !hasFeedback;
+
+    if(!isExpanded){
+      return `
+        <div class="response-card">
+          <div class="roster-row-head">
+            <span class="roster-name">${escapeHtml(r.studentName)}</span>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="badge done">提出済み</span>
+            </div>
+          </div>
+          <div class="response-summary-row">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              ${r.rating ? `<span class="rating-badge">評価 ${r.rating} / 10</span>` : ''}
+              ${r.liked ? `<span class="like-badge">♥ いいね</span>` : ''}
+            </div>
+            <button class="link-btn" onclick="toggleResponseExpanded(${idx})">開いて編集する</button>
+          </div>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="response-card needs-review">
+        <div class="roster-row-head">
+          <span class="roster-name">${escapeHtml(r.studentName)}</span>
+          <span class="badge done">提出済み</span>
+        </div>
+        <div class="response-text-box">${escapeHtml(r.text)}</div>
+        <p class="muted" style="font-size:11.5px;margin:6px 0 0;">提出：${escapeHtml(r.submittedAt)}</p>
+
+        <div class="eval-controls">
+          <label style="margin:0;" for="rating-input-${idx}">評価</label>
+          <select id="rating-input-${idx}">
+            <option value="">未評価</option>
+            ${[1,2,3,4,5,6,7,8,9,10].map(n => `<option value="${n}" ${r.rating===n?'selected':''}>${n}</option>`).join('')}
+          </select>
+          <label class="like-toggle-label" for="liked-input-${idx}">
+            <input type="checkbox" id="liked-input-${idx}" ${r.liked?'checked':''}> いいね
+          </label>
+        </div>
+
+        <label for="comment-input-${idx}">先生からのコメント</label>
+        <textarea id="comment-input-${idx}" placeholder="よいところを認めて、次への一歩を添えましょう">${escapeHtml(r.comment)}</textarea>
+        <div class="response-actions-row">
+          <button class="gold-btn" onclick="handleSaveComment(${idx})" ${state.busy?'disabled':''}>評価・コメントを保存</button>
+          ${hasFeedback ? `<button class="link-btn" onclick="toggleResponseExpanded(${idx})">閉じる</button>` : ''}
+        </div>
+      </div>
+    `;
+  }
+
+  function renderTeacherSettings(){
+    return `
+      <div class="card">
+        <h2 style="font-size:16px;color:var(--navy);">設定</h2>
+        <div class="field-row">
+          <label for="settingsTeacherNameInput">先生の名前</label>
+          <input id="settingsTeacherNameInput" type="text" placeholder="例：山田 花子" value="${escapeHtml(state.teacherName)}">
+        </div>
+        <div class="field-row">
+          <label for="settingsClassNameInput">担当するクラス</label>
+          <input id="settingsClassNameInput" type="text" placeholder="例：6年1組" value="${escapeHtml(state.className)}">
+        </div>
+        <div class="field-row">
+          <label for="settingsNewPasswordInput">新しいパスワード（変更する場合のみ・4文字以上）</label>
+          <input id="settingsNewPasswordInput" type="password" placeholder="変更しない場合は空欄のまま">
+        </div>
+        <button class="primary-btn" onclick="handleUpdateTeacherSettings()" ${state.busy?'disabled':''}>保存する</button>
+      </div>
+    `;
+  }
+
+  function renderStudentUrlCard(){
+    return `
+      <div class="card">
+        <h2 style="font-size:16px;color:var(--navy);">生徒用の接続コード</h2>
+        <p class="muted" style="font-size:13px;">
+          生徒は自分の端末でこの学習交流シート（index.html）を開き、ログイン画面の「生徒の方はこちら」からこのコードを貼り付けて接続します。
+          （このURLはご自身のパソコン上のファイルを指しているため、コードだけを配布してください。URLそのものを他の端末で開くことはできません）
+        </p>
+        ${state.teacherIssuedToken ? `
+          <div class="response-text-box" style="word-break:break-all;">${escapeHtml(buildStudentCode())}</div>
+          <div class="card-actions">
+            <button class="gold-btn" onclick="handleCopyStudentUrl()">コピーする</button>
+            <button class="ghost-btn" onclick="handleIssueStudentUrl(true)" ${state.busy?'disabled':''}>接続コードを再発行</button>
+          </div>
+        ` : `
+          <button class="primary-btn" onclick="handleIssueStudentUrl(false)" ${state.busy?'disabled':''}>接続コードを発行</button>
+        `}
+      </div>
     `;
   }
 
   function renderStudentAdmin(){
     return `
+      ${renderStudentUrlCard()}
       <div class="card">
         <h2 style="font-size:16px;color:var(--navy);">生徒を追加</h2>
         <div class="field-row">
-          <label for="newStudentNumber">出席番号（任意）</label>
+          <label for="newStudentNumber">出席番号</label>
           <input id="newStudentNumber" type="text" placeholder="例：5">
         </div>
         <div class="field-row">
-          <label for="newStudentName">生徒名</label>
-          <input id="newStudentName" type="text" placeholder="例：山田 太郎">
+          <label for="newStudentName">生徒名（空欄にすると出席番号だけで管理します）</label>
+          <input id="newStudentName" type="text" placeholder="例：山田 太郎（空欄可）">
         </div>
         <button class="primary-btn" onclick="handleAddStudent()" ${state.busy?'disabled':''}>追加する</button>
       </div>
       ${state.rosterAdmin.length === 0 ? '<div class="empty-state">名簿に生徒が登録されていません。</div>' : state.rosterAdmin.map((s, idx) => `
         <div class="card roster-row">
           <div class="roster-row-head">
-            <span class="roster-name">${escapeHtml(s.name)}${s.number ? '（' + escapeHtml(s.number) + '番）' : ''}</span>
+            <span class="roster-name">${s.hasName && s.number ? escapeHtml(s.number) + '番 ' : ''}${escapeHtml(s.name)}</span>
             <span class="badge ${s.hasPassword?'done':'pending'}">${s.hasPassword?'パスワード設定済み':'未設定'}</span>
           </div>
           <div class="card-actions">
             <button class="ghost-btn" onclick="handleResetStudentPassword(${idx})" ${state.busy?'disabled':''}>パスワードをリセット</button>
             <button class="ghost-btn" onclick="toggleSetPasswordForm(${idx})">パスワードを指定する</button>
+            <button class="ghost-btn" onclick="openThemeFilterModal(${idx})">テーマ</button>
+            <button class="ghost-btn" onclick="openThemeSummaryModal(${idx})">評価まとめ</button>
             <button class="ghost-btn" style="color:var(--danger);" onclick="handleRemoveStudent(${idx})" ${state.busy?'disabled':''}>名簿から削除</button>
           </div>
           ${state.settingPasswordFor === idx ? `
@@ -1087,6 +1688,76 @@
           ` : ''}
         </div>
       `).join('')}
+    `;
+  }
+
+  function renderThemeResponsesModal(){
+    return `
+      <div class="modal-overlay top-aligned">
+        <div class="modal-card wide">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+            <h3>${escapeHtml(state.themeFilterFor)} さんの回答（テーマ別）</h3>
+            <button class="link-btn" onclick="closeThemeResponsesModal()">閉じる</button>
+          </div>
+          ${state.busy ? `<p class="loading-line">読み込み中…</p>` : `
+            ${state.themes.length === 0 ? `<p class="muted" style="font-size:13.5px;">テーマがまだありません。「授業を作成」タブでテーマを追加してください。</p>` : `
+              <div class="theme-tab-row">
+                ${state.themes.map((t, i) => `<button class="${state.themeFilterSelected===t?'active':''}" onclick="selectThemeFilterTab(${i})">${escapeHtml(t)}</button>`).join('')}
+              </div>
+              ${renderThemeFilterResults()}
+            `}
+          `}
+          ${state.error ? `<div class="error-box">${escapeHtml(state.error)}</div>` : ''}
+        </div>
+      </div>
+    `;
+  }
+
+  function renderThemeFilterResults(){
+    if(!state.themeFilterSelected) return '';
+    const records = state.themeFilterAllRecords.filter(r => r.theme === state.themeFilterSelected);
+    if(records.length === 0){
+      return `<div class="empty-state">このテーマの授業への回答はまだありません。</div>`;
+    }
+    return records.map(r => `
+      <div class="card" style="margin-top:12px;">
+        <div class="lesson-date">${escapeHtml(r.date)}</div>
+        <div class="lesson-title">${escapeHtml(r.title)}</div>
+        <p class="muted" style="font-size:13px;margin:6px 0 0;">${escapeHtml(r.question)}</p>
+        <div class="response-text-box">${escapeHtml(r.text)}</div>
+        ${(r.rating || r.liked) ? `
+          <div class="eval-row">
+            ${r.rating ? `<span class="rating-badge">評価 ${r.rating} / 10</span>` : ''}
+            ${r.liked ? `<span class="like-badge">♥ いいね</span>` : ''}
+          </div>
+        ` : ''}
+        ${r.comment ? `
+          <div class="comment-note">
+            <div class="ctitle">先生からのコメント</div>
+            <div class="ctext">${escapeHtml(r.comment)}</div>
+            <div class="ctime">${escapeHtml(r.commentedAt)}</div>
+          </div>
+        ` : `<div class="comment-empty">まだコメントはありません。</div>`}
+      </div>
+    `).join('');
+  }
+
+  function renderThemeSummaryModal(){
+    return `
+      <div class="modal-overlay top-aligned">
+        <div class="modal-card wide">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+            <h3>${escapeHtml(state.themeSummaryFor)} さんの評価まとめ</h3>
+            <button class="link-btn" onclick="closeThemeSummaryModal()">閉じる</button>
+          </div>
+          ${state.busy
+            ? `<p class="loading-line">読み込み中…</p>`
+            : state.themeSummaryData.length === 0
+              ? `<p class="muted" style="font-size:13.5px;">まだ評価できるテーマがありません。授業にテーマを設定してください。</p>`
+              : buildRadarSvg(state.themeSummaryData.map(d => d.theme), state.themeSummaryData.map(d => d.average), 10)}
+          ${state.error ? `<div class="error-box">${escapeHtml(state.error)}</div>` : ''}
+        </div>
+      </div>
     `;
   }
 
@@ -1170,5 +1841,10 @@
     `).join('');
   }
 
-  render();
+  parseHashParams();
+  if(state.studentMode){
+    initStudentModeAuto();
+  }else{
+    render();
+  }
 </script>
