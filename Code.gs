@@ -87,9 +87,9 @@ function initializeSheets() {
   let lessons = ss.getSheetByName(SHEET_LESSONS);
   if (!lessons) {
     lessons = ss.insertSheet(SHEET_LESSONS);
-    lessons.getRange('A1:F1').setValues([['授業ID', '日付', 'タイトル', '発問', '公開', 'テーマ']]);
-    lessons.getRange('A1:F1').setFontWeight('bold');
-    lessons.setColumnWidths(1, 6, 160);
+    lessons.getRange('A1:H1').setValues([['授業ID', '日付', 'タイトル', '発問', '公開', 'テーマ', 'お気に入り', '削除済み']]);
+    lessons.getRange('A1:H1').setFontWeight('bold');
+    lessons.setColumnWidths(1, 8, 160);
   }
 
   let themes = ss.getSheetByName(SHEET_THEMES);
@@ -182,6 +182,24 @@ function handleRequest(e) {
         break;
       case 'setLessonPublished':
         result = actionSetLessonPublished(params);
+        break;
+      case 'setLessonTheme':
+        result = actionSetLessonTheme(params);
+        break;
+      case 'setLessonFavorite':
+        result = actionSetLessonFavorite(params);
+        break;
+      case 'deleteLesson':
+        result = actionDeleteLesson(params);
+        break;
+      case 'restoreLesson':
+        result = actionRestoreLesson(params);
+        break;
+      case 'purgeLesson':
+        result = actionPurgeLesson(params);
+        break;
+      case 'getDeletedLessons':
+        result = actionGetDeletedLessons(params);
         break;
       case 'getThemes':
         result = actionGetThemes(params);
@@ -401,6 +419,26 @@ function ensureLessonThemeColumn() {
   }
 }
 
+// 授業シートに「お気に入り」列が無い（旧スプレッドシート）場合は自動で追加する
+function ensureLessonFavoriteColumn() {
+  const sheet = getSheet(SHEET_LESSONS);
+  const lastCol = Math.max(sheet.getLastColumn(), 1);
+  const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  if (header.indexOf('お気に入り') === -1) {
+    sheet.getRange(1, lastCol + 1).setValue('お気に入り');
+  }
+}
+
+// 授業シートに「削除済み」列が無い（旧スプレッドシート）場合は自動で追加する
+function ensureLessonDeletedColumn() {
+  const sheet = getSheet(SHEET_LESSONS);
+  const lastCol = Math.max(sheet.getLastColumn(), 1);
+  const header = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  if (header.indexOf('削除済み') === -1) {
+    sheet.getRange(1, lastCol + 1).setValue('削除済み');
+  }
+}
+
 function formatDate(d) {
   if (Object.prototype.toString.call(d) === '[object Date]') {
     return Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM-dd');
@@ -558,6 +596,7 @@ function actionTeacherLogin(params) {
     className: settings['クラス名'] || '',
     teacherName: settings['担任名'] || '',
     lessons: getLessonsList('teacher'),
+    themes: getThemeList(),
   };
 }
 
@@ -576,6 +615,7 @@ function actionRegisterTeacherPassword(params) {
     className: settings['クラス名'] || '',
     teacherName: settings['担任名'] || '',
     lessons: getLessonsList('teacher'),
+    themes: getThemeList(),
   };
 }
 
@@ -601,16 +641,21 @@ function actionUpdateTeacherSettings(params) {
 // 授業一覧の中身を組み立てる（teacher は全件、それ以外は公開済みのみ）
 function getLessonsList(role) {
   ensureLessonThemeColumn();
+  ensureLessonFavoriteColumn();
+  ensureLessonDeletedColumn();
   const sheet = getSheet(SHEET_LESSONS);
   const objs = sheetToObjects(sheet);
-  let lessons = objs.map((o) => ({
-    lessonId: String(o['授業ID']),
-    date: formatDate(o['日付']),
-    title: o['タイトル'] || '',
-    question: o['発問'] || '',
-    published: isTrue(o['公開']),
-    theme: o['テーマ'] || '',
-  }));
+  let lessons = objs
+    .filter((o) => !isTrue(o['削除済み']))
+    .map((o) => ({
+      lessonId: String(o['授業ID']),
+      date: formatDate(o['日付']),
+      title: o['タイトル'] || '',
+      question: o['発問'] || '',
+      published: isTrue(o['公開']),
+      theme: o['テーマ'] || '',
+      favorite: isTrue(o['お気に入り']),
+    }));
   if (role !== 'teacher') {
     lessons = lessons.filter((l) => l.published);
   }
@@ -635,6 +680,8 @@ function actionCreateLesson(params) {
   if (!params.question) throw new Error('発問（ふりかえりの問い）を入力してください');
 
   ensureLessonThemeColumn();
+  ensureLessonFavoriteColumn();
+  ensureLessonDeletedColumn();
   const sheet = getSheet(SHEET_LESSONS);
   const lessonId = 'L' + new Date().getTime();
   const published = isTrue(params.published);
@@ -645,6 +692,8 @@ function actionCreateLesson(params) {
     params.question,
     published,
     params.theme || '',
+    false,
+    false,
   ]);
   return { lessonId: lessonId };
 }
@@ -662,6 +711,115 @@ function actionSetLessonPublished(params) {
     }
   }
   throw new Error('対象の授業が見つかりません');
+}
+
+// 授業のテーマを変更する（教師のみ）
+function actionSetLessonTheme(params) {
+  checkTeacherPassword(params);
+  if (!params.lessonId) throw new Error('授業IDが必要です');
+  const theme = params.theme ? String(params.theme).trim() : '';
+  if (theme && getThemeList().indexOf(theme) === -1) {
+    throw new Error('登録されていないテーマです');
+  }
+  ensureLessonThemeColumn();
+  const sheet = getSheet(SHEET_LESSONS);
+  const data = sheet.getDataRange().getValues();
+  const themeCol = data[0].indexOf('テーマ');
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(params.lessonId)) {
+      sheet.getRange(i + 1, themeCol + 1).setValue(theme);
+      return {};
+    }
+  }
+  throw new Error('対象の授業が見つかりません');
+}
+
+// 授業のお気に入りを切り替える（教師のみ）
+function actionSetLessonFavorite(params) {
+  checkTeacherPassword(params);
+  if (!params.lessonId) throw new Error('授業IDが必要です');
+  ensureLessonFavoriteColumn();
+  const sheet = getSheet(SHEET_LESSONS);
+  const data = sheet.getDataRange().getValues();
+  const favCol = data[0].indexOf('お気に入り');
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(params.lessonId)) {
+      sheet.getRange(i + 1, favCol + 1).setValue(isTrue(params.favorite));
+      return {};
+    }
+  }
+  throw new Error('対象の授業が見つかりません');
+}
+
+// 授業を削除する（論理削除。スプレッドシートにはデータを残し「削除済み」フラグだけ付ける・教師のみ）
+function actionDeleteLesson(params) {
+  checkTeacherPassword(params);
+  if (!params.lessonId) throw new Error('授業IDが必要です');
+  ensureLessonDeletedColumn();
+  const sheet = getSheet(SHEET_LESSONS);
+  const data = sheet.getDataRange().getValues();
+  const delCol = data[0].indexOf('削除済み');
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(params.lessonId)) {
+      sheet.getRange(i + 1, delCol + 1).setValue(true);
+      return {};
+    }
+  }
+  throw new Error('対象の授業が見つかりません');
+}
+
+// 削除済みの授業を元に戻す（教師のみ）
+function actionRestoreLesson(params) {
+  checkTeacherPassword(params);
+  if (!params.lessonId) throw new Error('授業IDが必要です');
+  ensureLessonDeletedColumn();
+  const sheet = getSheet(SHEET_LESSONS);
+  const data = sheet.getDataRange().getValues();
+  const delCol = data[0].indexOf('削除済み');
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(params.lessonId)) {
+      sheet.getRange(i + 1, delCol + 1).setValue(false);
+      return {};
+    }
+  }
+  throw new Error('対象の授業が見つかりません');
+}
+
+// 授業をスプレッドシートから完全に削除する（元に戻せない・教師のみ。生徒の回答データは「回答」シートに残る）
+function actionPurgeLesson(params) {
+  checkTeacherPassword(params);
+  if (!params.lessonId) throw new Error('授業IDが必要です');
+  const sheet = getSheet(SHEET_LESSONS);
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(params.lessonId)) {
+      sheet.deleteRow(i + 1);
+      return {};
+    }
+  }
+  throw new Error('対象の授業が見つかりません');
+}
+
+// 削除済み（論理削除）の授業一覧を返す（教師のみ）
+function actionGetDeletedLessons(params) {
+  checkTeacherPassword(params);
+  ensureLessonThemeColumn();
+  ensureLessonFavoriteColumn();
+  ensureLessonDeletedColumn();
+  const objs = sheetToObjects(getSheet(SHEET_LESSONS));
+  const lessons = objs
+    .filter((o) => isTrue(o['削除済み']))
+    .map((o) => ({
+      lessonId: String(o['授業ID']),
+      date: formatDate(o['日付']),
+      title: o['タイトル'] || '',
+      question: o['発問'] || '',
+      published: isTrue(o['公開']),
+      theme: o['テーマ'] || '',
+      favorite: isTrue(o['お気に入り']),
+    }));
+  lessons.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  return { lessons: lessons };
 }
 
 // テーマの一覧（教師のみ）
@@ -808,32 +966,42 @@ function actionSaveComment(params) {
 }
 
 // 生徒の過去の記録（ふりかえり＋先生のコメント等）の中身を組み立てる
+// 削除済み（論理削除）の授業に紐づく回答は除外する
 function getMyRecordsList(studentName) {
   const respObjs = sheetToObjects(getSheet(SHEET_RESPONSES)).filter(
     (o) => o['生徒名'] === studentName
   );
   const lessonObjs = sheetToObjects(getSheet(SHEET_LESSONS));
   const lessonMap = {};
+  const deletedLessonIds = {};
   lessonObjs.forEach((l) => {
-    lessonMap[String(l['授業ID'])] = l;
+    const id = String(l['授業ID']);
+    lessonMap[id] = l;
+    if (isTrue(l['削除済み'])) deletedLessonIds[id] = true;
   });
 
-  const records = respObjs.map((o) => {
-    const lesson = lessonMap[String(o['授業ID'])] || {};
-    return {
-      lessonId: String(o['授業ID']),
-      title: lesson['タイトル'] || '(削除された授業)',
-      date: formatDate(lesson['日付']),
-      question: lesson['発問'] || '',
-      theme: lesson['テーマ'] || '',
-      text: o['回答内容'] || '',
-      submittedAt: formatDateTime(o['提出日時']),
-      comment: o['教師コメント'] || '',
-      commentedAt: formatDateTime(o['コメント日時']),
-      rating: o['評価'] !== '' && o['評価'] !== null && o['評価'] !== undefined ? Number(o['評価']) : null,
-      liked: isTrue(o['いいね']),
-    };
-  });
+  const records = respObjs
+    .filter((o) => {
+      const id = String(o['授業ID']);
+      // 授業が存在しない（完全削除など）／論理削除済みの授業に紐づく回答は生徒側に出さない
+      return lessonMap[id] && !deletedLessonIds[id];
+    })
+    .map((o) => {
+      const lesson = lessonMap[String(o['授業ID'])] || {};
+      return {
+        lessonId: String(o['授業ID']),
+        title: lesson['タイトル'] || '(削除された授業)',
+        date: formatDate(lesson['日付']),
+        question: lesson['発問'] || '',
+        theme: lesson['テーマ'] || '',
+        text: o['回答内容'] || '',
+        submittedAt: formatDateTime(o['提出日時']),
+        comment: o['教師コメント'] || '',
+        commentedAt: formatDateTime(o['コメント日時']),
+        rating: o['評価'] !== '' && o['評価'] !== null && o['評価'] !== undefined ? Number(o['評価']) : null,
+        liked: isTrue(o['いいね']),
+      };
+    });
 
   records.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
   return records;
@@ -873,6 +1041,7 @@ function actionGetThemeEvaluationSummary(params) {
   const themeByLessonId = {};
   const usedThemes = [];
   lessonObjs.forEach((l) => {
+    if (isTrue(l['削除済み'])) return;
     const theme = String(l['テーマ'] || '').trim();
     themeByLessonId[String(l['授業ID'])] = theme;
     if (theme && usedThemes.indexOf(theme) === -1) usedThemes.push(theme);
