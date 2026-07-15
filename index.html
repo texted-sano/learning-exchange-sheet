@@ -533,6 +533,7 @@
     role: null, // 'teacher' | 'student'
     teacherPassword: '',
     studentName: '',
+    studentPassword: '',
 
     view: 'connect', // connect | teacher | student
     teacherSubView: 'create', // create | list | detail
@@ -789,6 +790,7 @@
     state.busy = true; state.error=''; render();
     try{
       const res = await apiCall('registerStudentPassword', { name: state.pendingStudentName, password: pw, token: state.studentToken });
+      state.studentPassword = pw;
       await afterStudentLoginSuccess(res);
     }catch(e){
       state.error = e.message;
@@ -804,6 +806,7 @@
     state.busy = true; state.error=''; render();
     try{
       const res = await apiCall('studentLogin', { name: state.pendingStudentName, password: pw, token: state.studentToken });
+      state.studentPassword = pw;
       await afterStudentLoginSuccess(res);
     }catch(e){
       state.error = e.message;
@@ -823,7 +826,7 @@
     }else{
       const [lessonsRes, recordsRes] = await Promise.all([
         apiCall('getLessons', { role:'student', token: state.studentToken }),
-        apiCall('getMyRecords', { studentName: res.studentName, token: state.studentToken }),
+        apiCall('getMyRecords', { studentName: res.studentName, password: state.studentPassword, token: state.studentToken }),
       ]);
       state.lessons = lessonsRes.lessons || [];
       state.records = recordsRes.records || [];
@@ -834,6 +837,7 @@
     state.role = null;
     state.teacherPassword = '';
     state.studentName = '';
+    state.studentPassword = '';
     state.view = 'connect';
     state.selectedLessonId = null;
     state.writingLessonId = null;
@@ -1263,7 +1267,7 @@
   async function refreshStudentRecords(){
     state.busy = true; render();
     try{
-      const res = await apiCall('getMyRecords', { studentName: state.studentName, token: state.studentToken });
+      const res = await apiCall('getMyRecords', { studentName: state.studentName, password: state.studentPassword, token: state.studentToken });
       state.records = res.records || [];
     }catch(e){ state.error = e.message; }
     finally{ state.busy = false; render(); }
@@ -1284,8 +1288,8 @@
     if(!text){ state.error='ひとことでも、自分の考えを書いてみよう'; render(); return; }
     state.busy = true; state.error=''; render();
     try{
-      await apiCall('submitReflection', { studentName: state.studentName, lessonId, text, token: state.studentToken });
-      const res = await apiCall('getMyRecords', { studentName: state.studentName, token: state.studentToken });
+      await apiCall('submitReflection', { studentName: state.studentName, lessonId, text, password: state.studentPassword, token: state.studentToken });
+      const res = await apiCall('getMyRecords', { studentName: state.studentName, password: state.studentPassword, token: state.studentToken });
       state.records = res.records || [];
       state.writingLessonId = null;
       showToast('送信しました');
