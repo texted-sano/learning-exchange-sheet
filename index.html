@@ -316,17 +316,7 @@
     border:1px solid #E0BD66;
     border-radius:4px 12px 12px 12px;
     padding:14px 16px 14px 18px;
-    transform:rotate(-0.6deg);
     box-shadow:0 10px 18px -12px rgba(120,90,20,0.45);
-  }
-  .comment-note::before{
-    content:"";
-    position:absolute;
-    top:0; left:0;
-    width:0; height:0;
-    border-style:solid;
-    border-width:0 16px 16px 0;
-    border-color:transparent #FAF6EF transparent transparent;
   }
   .comment-note .ctitle{
     font-size:11.5px;
@@ -466,6 +456,36 @@
     border-radius:999px;
   }
   .theme-chip.plain{ padding:5px 12px; }
+  .lesson-theme-row{ display:flex; align-items:center; gap:8px; margin-top:10px; }
+  .fav-btn{
+    background:none;
+    font-size:22px;
+    line-height:1;
+    color:#C9C2AC;
+    padding:0 2px;
+  }
+  .fav-btn.active{ color:var(--gold); }
+  .lesson-list-controls{
+    display:flex;
+    align-items:flex-end;
+    gap:20px;
+    flex-wrap:wrap;
+    margin-bottom:6px;
+  }
+  .lesson-list-controls .like-toggle-label{ padding-bottom:10px; }
+  .lesson-list-controls > button{ margin-bottom:2px; }
+  .lesson-theme-row label{ margin:0; }
+  .lesson-theme-row select{
+    width:auto;
+    background:#F1ECDD;
+    color:var(--navy);
+    font-size:12.5px;
+    font-weight:700;
+    border:none;
+    border-radius:999px;
+    padding:5px 12px;
+    cursor:pointer;
+  }
   .theme-chip button{
     background:none;
     color:var(--danger);
@@ -523,12 +543,16 @@
     lessons: [],
     lessonResponses: [],
     expandedResponses: {},
+    expandedRecords: {},
     records: [],
     rosterAdmin: [],
     settingPasswordFor: null,
 
     themes: [],
     teacherLessonSort: 'date', // date | theme
+    teacherShowFavoritesOnly: false,
+    showDeletedLessonsModal: false,
+    deletedLessons: [],
 
     showThemeFilterModal: false,
     themeFilterFor: '',
@@ -695,6 +719,7 @@
       state.teacherPassword = pw;
       state.view = 'teacher';
       state.teacherSubView = 'list';
+      if(Array.isArray(res.themes)) state.themes = res.themes;
       if(Array.isArray(res.lessons)){
         state.lessons = res.lessons;
       }else{
@@ -719,6 +744,7 @@
       state.teacherPassword = pw;
       state.view = 'teacher';
       state.teacherSubView = 'list';
+      if(Array.isArray(res.themes)) state.themes = res.themes;
       if(Array.isArray(res.lessons)){
         state.lessons = res.lessons;
       }else{
@@ -828,6 +854,10 @@
     try{
       const res = await apiCall('getLessons', { role:'teacher', password: state.teacherPassword });
       state.lessons = res.lessons || [];
+      if(state.themes.length === 0){
+        const themesRes = await apiCall('getThemes', { password: state.teacherPassword });
+        state.themes = themesRes.themes || [];
+      }
     }catch(e){ state.error = e.message; }
     finally{ state.busy = false; render(); }
   }
@@ -867,6 +897,7 @@
     state.teacherSubView = v;
     state.error='';
     state.settingPasswordFor = null;
+    state.showDeletedLessonsModal = false;
     if(v === 'list') loadTeacherLessons();
     else if(v === 'students') loadStudentsTabData();
     else if(v === 'create') loadThemes();
@@ -876,6 +907,20 @@
   function handleLessonSortChange(v){
     state.teacherLessonSort = v;
     render();
+  }
+
+  function handleFavoritesOnlyChange(checked){
+    state.teacherShowFavoritesOnly = checked;
+    render();
+  }
+
+  function creationTimeFromLessonId(lessonId){
+    const ms = Number(String(lessonId || '').slice(1));
+    if(!ms || isNaN(ms)) return '';
+    const d = new Date(ms);
+    const hh = String(d.getHours()).padStart(2,'0');
+    const mm = String(d.getMinutes()).padStart(2,'0');
+    return hh + ':' + mm;
   }
 
   async function handleCreateLesson(){
@@ -888,7 +933,7 @@
     state.busy = true; state.error=''; render();
     try{
       const res = await apiCall('createLesson', { password: state.teacherPassword, date, title, question, published, theme });
-      state.lessons.unshift({ lessonId: res.lessonId, date, title, question, published, theme });
+      state.lessons.unshift({ lessonId: res.lessonId, date, title, question, published, theme, favorite: false });
       showToast('授業を作成しました');
       state.teacherSubView = 'list';
     }catch(e){ state.error = e.message; render(); }
@@ -945,6 +990,83 @@
       const lesson = state.lessons.find(l => l.lessonId === lessonId);
       if(lesson) lesson.published = newVal;
       showToast(newVal ? '公開しました' : '非公開にしました');
+    }catch(e){ state.error = e.message; render(); }
+    finally{ state.busy = false; render(); }
+  }
+
+  async function handleChangeLessonTheme(lessonId, theme){
+    state.busy = true; state.error=''; render();
+    try{
+      await apiCall('setLessonTheme', { password: state.teacherPassword, lessonId, theme });
+      const lesson = state.lessons.find(l => l.lessonId === lessonId);
+      if(lesson) lesson.theme = theme;
+      showToast(theme ? 'テーマを「' + theme + '」に変更しました' : 'テーマを未設定にしました');
+    }catch(e){ state.error = e.message; render(); }
+    finally{ state.busy = false; render(); }
+  }
+
+  async function handleToggleFavorite(lessonId, favorite){
+    state.busy = true; state.error=''; render();
+    try{
+      await apiCall('setLessonFavorite', { password: state.teacherPassword, lessonId, favorite: favorite ? 'true' : '' });
+      const lesson = state.lessons.find(l => l.lessonId === lessonId);
+      if(lesson) lesson.favorite = favorite;
+      showToast(favorite ? 'お気に入りに登録しました' : 'お気に入りを解除しました');
+    }catch(e){ state.error = e.message; render(); }
+    finally{ state.busy = false; render(); }
+  }
+
+  async function handleDeleteLesson(lessonId){
+    const lesson = state.lessons.find(l => l.lessonId === lessonId);
+    const title = lesson ? lesson.title : '';
+    if(!confirm('「' + title + '」を削除します。よろしいですか？\n（「削除した授業」からいつでも元に戻せます。生徒の画面からは見えなくなります）')) return;
+    state.busy = true; state.error=''; render();
+    try{
+      await apiCall('deleteLesson', { password: state.teacherPassword, lessonId });
+      state.lessons = state.lessons.filter(l => l.lessonId !== lessonId);
+      showToast('授業を削除しました（「削除した授業」から元に戻せます）');
+    }catch(e){ state.error = e.message; render(); }
+    finally{ state.busy = false; render(); }
+  }
+
+  async function openDeletedLessonsModal(){
+    state.showDeletedLessonsModal = true;
+    state.deletedLessons = [];
+    state.error = '';
+    state.busy = true; render();
+    try{
+      const res = await apiCall('getDeletedLessons', { password: state.teacherPassword });
+      state.deletedLessons = res.lessons || [];
+    }catch(e){ state.error = e.message; }
+    finally{ state.busy = false; render(); }
+  }
+
+  function closeDeletedLessonsModal(){
+    state.showDeletedLessonsModal = false;
+    render();
+  }
+
+  async function handleRestoreLesson(lessonId){
+    state.busy = true; state.error=''; render();
+    try{
+      await apiCall('restoreLesson', { password: state.teacherPassword, lessonId });
+      const restored = state.deletedLessons.find(l => l.lessonId === lessonId);
+      state.deletedLessons = state.deletedLessons.filter(l => l.lessonId !== lessonId);
+      if(restored) state.lessons.push(restored);
+      showToast('授業を元に戻しました');
+    }catch(e){ state.error = e.message; render(); }
+    finally{ state.busy = false; render(); }
+  }
+
+  async function handlePurgeLesson(lessonId){
+    const lesson = state.deletedLessons.find(l => l.lessonId === lessonId);
+    const title = lesson ? lesson.title : '';
+    if(!confirm('「' + title + '」をスプレッドシートから完全に削除します。\nこの操作は元に戻せません。よろしいですか？\n（生徒の回答データは「回答」シートに残ります）')) return;
+    state.busy = true; state.error=''; render();
+    try{
+      await apiCall('purgeLesson', { password: state.teacherPassword, lessonId });
+      state.deletedLessons = state.deletedLessons.filter(l => l.lessonId !== lessonId);
+      showToast('授業を完全に削除しました');
     }catch(e){ state.error = e.message; render(); }
     finally{ state.busy = false; render(); }
   }
@@ -1132,8 +1254,10 @@
     state.studentSubView = v;
     state.writingLessonId = null;
     state.error = '';
-    if(v === 'records') refreshStudentRecords();
-    else render();
+    if(v === 'records'){
+      state.expandedRecords = {};
+      refreshStudentRecords();
+    }else render();
   }
 
   async function refreshStudentRecords(){
@@ -1143,6 +1267,11 @@
       state.records = res.records || [];
     }catch(e){ state.error = e.message; }
     finally{ state.busy = false; render(); }
+  }
+
+  function toggleRecordExpanded(lessonId){
+    state.expandedRecords[lessonId] = !state.expandedRecords[lessonId];
+    render();
   }
 
   function toggleWriteForm(lessonId){
@@ -1241,7 +1370,7 @@
   }
 
   function renderLoadingOverlay(){
-    const modalHandlesOwnLoading = state.showThemeFilterModal || state.showThemeSummaryModal;
+    const modalHandlesOwnLoading = state.showThemeFilterModal || state.showThemeSummaryModal || state.showDeletedLessonsModal;
     document.getElementById('loading-root').innerHTML = (state.busy && !modalHandlesOwnLoading)
       ? `<div class="loading-overlay"><div class="spinner"></div><div class="loading-text">読み込み中…</div></div>`
       : '';
@@ -1430,6 +1559,7 @@
       </div>
       ${state.showThemeFilterModal ? renderThemeResponsesModal() : ''}
       ${state.showThemeSummaryModal ? renderThemeSummaryModal() : ''}
+      ${state.showDeletedLessonsModal ? renderDeletedLessonsModal() : ''}
     `;
   }
 
@@ -1493,38 +1623,58 @@
     if(state.lessons.length === 0){
       return `<div class="empty-state">まだ授業がありません。「授業を作成」から最初の授業をつくってみましょう。</div>`;
     }
-    const sorted = [...state.lessons].sort((a, b) => {
-      if(state.teacherLessonSort === 'theme'){
-        const ta = a.theme || '';
-        const tb = b.theme || '';
-        if(ta !== tb) return ta < tb ? -1 : 1;
-      }
-      return a.date < b.date ? 1 : a.date > b.date ? -1 : 0;
-    });
+    const sorted = [...state.lessons]
+      .filter(l => !state.teacherShowFavoritesOnly || l.favorite)
+      .sort((a, b) => {
+        if(state.teacherLessonSort === 'theme'){
+          const ta = a.theme || '';
+          const tb = b.theme || '';
+          if(ta !== tb) return ta < tb ? -1 : 1;
+        }
+        return a.date < b.date ? 1 : a.date > b.date ? -1 : 0;
+      });
     return `
-      <div class="field-row" style="max-width:220px;">
-        <label for="lessonSortSelect">並び替え</label>
-        <select id="lessonSortSelect" onchange="handleLessonSortChange(this.value)">
-          <option value="date" ${state.teacherLessonSort==='date'?'selected':''}>日付順</option>
-          <option value="theme" ${state.teacherLessonSort==='theme'?'selected':''}>テーマ順</option>
-        </select>
+      <div class="lesson-list-controls">
+        <div style="max-width:220px;">
+          <label for="lessonSortSelect">並び替え</label>
+          <select id="lessonSortSelect" onchange="handleLessonSortChange(this.value)">
+            <option value="date" ${state.teacherLessonSort==='date'?'selected':''}>日付順</option>
+            <option value="theme" ${state.teacherLessonSort==='theme'?'selected':''}>テーマ順</option>
+          </select>
+        </div>
+        <label class="like-toggle-label" for="favOnlyCheckbox">
+          <input type="checkbox" id="favOnlyCheckbox" ${state.teacherShowFavoritesOnly?'checked':''} onchange="handleFavoritesOnlyChange(this.checked)"> お気に入りのみ表示
+        </label>
+        <button class="ghost-btn" style="margin-left:auto;" onclick="openDeletedLessonsModal()">削除した授業</button>
       </div>
-      ${sorted.map(l => `
+      ${sorted.length === 0 ? '<div class="empty-state">お気に入りに登録された授業がありません。</div>' : sorted.map(l => {
+        const createdTime = creationTimeFromLessonId(l.lessonId);
+        return `
         <div class="card">
           <div class="lesson-card-head">
             <div>
-              <div class="lesson-date">${escapeHtml(l.date)}</div>
+              <div class="lesson-date">${escapeHtml(l.date)}${createdTime ? ' ・ 作成 ' + createdTime : ''}</div>
               <div class="lesson-title">${escapeHtml(l.title)}</div>
             </div>
-            <span class="badge ${l.published?'published':'unpublished'}">${l.published?'公開中':'非公開'}</span>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span class="badge ${l.published?'published':'unpublished'}">${l.published?'公開中':'非公開'}</span>
+              <button class="fav-btn ${l.favorite?'active':''}" onclick="handleToggleFavorite('${l.lessonId}', ${!l.favorite})" ${state.busy?'disabled':''} title="${l.favorite?'お気に入りを解除':'お気に入りに登録'}">${l.favorite?'★':'☆'}</button>
+            </div>
           </div>
-          ${l.theme ? `<div style="margin-top:8px;"><span class="theme-chip plain">${escapeHtml(l.theme)}</span></div>` : ''}
+          <div class="lesson-theme-row">
+            <label for="lesson-theme-${l.lessonId}">テーマ</label>
+            <select id="lesson-theme-${l.lessonId}" onchange="handleChangeLessonTheme('${l.lessonId}', this.value)" ${state.busy?'disabled':''}>
+              <option value="">未設定</option>
+              ${(!l.theme || state.themes.includes(l.theme) ? state.themes : [l.theme].concat(state.themes)).map(t => `<option value="${escapeHtml(t)}" ${l.theme===t?'selected':''}>${escapeHtml(t)}</option>`).join('')}
+            </select>
+          </div>
           <div class="card-actions">
             <button class="gold-btn" onclick="openLessonDetail('${l.lessonId}')">回答を見る・評価する</button>
             <button class="ghost-btn" onclick="handleTogglePublish('${l.lessonId}', ${!l.published})">${l.published?'非公開にする':'公開する'}</button>
+            <button class="ghost-btn" style="margin-left:auto;color:var(--danger);" onclick="handleDeleteLesson('${l.lessonId}')" ${state.busy?'disabled':''}>削除</button>
           </div>
         </div>
-      `).join('')}
+      `;}).join('')}
     `;
   }
 
@@ -1761,6 +1911,40 @@
     `;
   }
 
+  function renderDeletedLessonsModal(){
+    return `
+      <div class="modal-overlay top-aligned">
+        <div class="modal-card wide">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+            <h3>削除した授業</h3>
+            <button class="link-btn" onclick="closeDeletedLessonsModal()">閉じる</button>
+          </div>
+          <p class="muted" style="font-size:13px;margin:6px 0 4px;">
+            ここにある授業は生徒の画面からは見えません。「元に戻す」で復活できます。
+            「完全に削除」を押すと、スプレッドシートからも消え、元に戻せなくなります。
+          </p>
+          ${state.busy ? `<p class="loading-line">読み込み中…</p>` : (
+            state.deletedLessons.length === 0
+              ? `<div class="empty-state">削除した授業はありません。</div>`
+              : state.deletedLessons.map(l => `
+                <div class="card" style="margin-top:12px;">
+                  <div class="lesson-date">${escapeHtml(l.date)}</div>
+                  <div class="lesson-title">${escapeHtml(l.title)}</div>
+                  ${l.theme ? `<div style="margin-top:8px;"><span class="theme-chip plain">${escapeHtml(l.theme)}</span></div>` : ''}
+                  <p class="muted" style="font-size:13px;margin:8px 0 0;">${escapeHtml(l.question)}</p>
+                  <div class="card-actions">
+                    <button class="gold-btn" onclick="handleRestoreLesson('${l.lessonId}')" ${state.busy?'disabled':''}>元に戻す</button>
+                    <button class="ghost-btn" style="color:var(--danger);" onclick="handlePurgeLesson('${l.lessonId}')" ${state.busy?'disabled':''}>完全に削除</button>
+                  </div>
+                </div>
+              `).join('')
+          )}
+          ${state.error ? `<div class="error-box">${escapeHtml(state.error)}</div>` : ''}
+        </div>
+      </div>
+    `;
+  }
+
   // ---------------- 生徒用 ----------------
   function renderStudentScreen(){
     return `
@@ -1818,27 +2002,57 @@
     if(state.records.length === 0){
       return `<div class="empty-state">まだ記録がありません。授業に回答すると、ここに残ります。</div>`;
     }
-    return state.records.map(r => `
-      <div class="card">
-        <div class="lesson-date">${escapeHtml(r.date)}</div>
-        <div class="lesson-title">${escapeHtml(r.title)}</div>
-        <p class="muted" style="font-size:13px;margin:6px 0 0;">${escapeHtml(r.question)}</p>
-        <div class="response-text-box">${escapeHtml(r.text)}</div>
-        ${(r.rating || r.liked) ? `
-          <div class="eval-row">
-            ${r.rating ? `<span class="rating-badge">評価 ${r.rating} / 10</span>` : ''}
-            ${r.liked ? `<span class="like-badge">♥ いいね</span>` : ''}
+    return state.records.map(r => {
+      const isExpanded = !!state.expandedRecords[r.lessonId];
+
+      if(!isExpanded){
+        return `
+          <div class="response-card">
+            <div class="roster-row-head">
+              <div>
+                <div class="lesson-date">${escapeHtml(r.date)}</div>
+                <div class="lesson-title">${escapeHtml(r.title)}</div>
+              </div>
+            </div>
+            <div class="response-summary-row">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                ${r.rating ? `<span class="rating-badge">評価 ${r.rating} / 10</span>` : ''}
+                ${r.liked ? `<span class="like-badge">♥ いいね</span>` : ''}
+                ${r.comment ? `<span class="badge done">コメントあり</span>` : ''}
+              </div>
+              <button class="link-btn" onclick="toggleRecordExpanded('${r.lessonId}')">開く</button>
+            </div>
           </div>
-        ` : ''}
-        ${r.comment ? `
-          <div class="comment-note">
-            <div class="ctitle">先生からのコメント</div>
-            <div class="ctext">${escapeHtml(r.comment)}</div>
-            <div class="ctime">${escapeHtml(r.commentedAt)}</div>
+        `;
+      }
+
+      return `
+        <div class="card">
+          <div class="roster-row-head">
+            <div>
+              <div class="lesson-date">${escapeHtml(r.date)}</div>
+              <div class="lesson-title">${escapeHtml(r.title)}</div>
+            </div>
+            <button class="link-btn" onclick="toggleRecordExpanded('${r.lessonId}')">閉じる</button>
           </div>
-        ` : `<div class="comment-empty">まだ先生からのコメントはありません。</div>`}
-      </div>
-    `).join('');
+          <p class="muted" style="font-size:13px;margin:6px 0 0;">${escapeHtml(r.question)}</p>
+          <div class="response-text-box">${escapeHtml(r.text)}</div>
+          ${(r.rating || r.liked) ? `
+            <div class="eval-row">
+              ${r.rating ? `<span class="rating-badge">評価 ${r.rating} / 10</span>` : ''}
+              ${r.liked ? `<span class="like-badge">♥ いいね</span>` : ''}
+            </div>
+          ` : ''}
+          ${r.comment ? `
+            <div class="comment-note">
+              <div class="ctitle">先生からのコメント</div>
+              <div class="ctext">${escapeHtml(r.comment)}</div>
+              <div class="ctime">${escapeHtml(r.commentedAt)}</div>
+            </div>
+          ` : `<div class="comment-empty">まだ先生からのコメントはありません。</div>`}
+        </div>
+      `;
+    }).join('');
   }
 
   parseHashParams();
